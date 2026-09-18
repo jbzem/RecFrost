@@ -1527,6 +1527,23 @@ async function playerDormInstance(c: Context<App>, accountId: number): Promise<R
 	return roomInstanceFromRoom(c.env, room, true, instance.roomInstanceId, instance.photonRoomId)
 }
 
+/**
+ * Whether a matchmake is one a BANNED account is still allowed: the ones that can only put
+ * them in their own dorm.
+ *
+ * `/matchmake/dorm` resolves the caller's dorm and nothing else. `/matchmake/none` normally
+ * answers whatever instance their presence names, falling back to the dorm — so it is allowed
+ * only because the handler sends a banned caller to the dorm outright (see `bannedToDorm`).
+ * Both are in the list because which one the client calls on load-in depends on the build, and
+ * a banned player who cannot complete either never reaches the screen telling them they are
+ * banned.
+ *
+ * Matched on the path rather than the route, because the check runs in middleware, before Hono
+ * has picked one. A trailing slash is accepted — the client sends both spellings elsewhere —
+ * and nothing else is: `/matchmake/dormitory` must not read as the dorm.
+ */
+const isDormMatchmake = (path: string): boolean => /^\/matchmake\/(dorm|none)\/?$/.test(path)
+
 const app = new Hono<App>()
 	.use(
 		'*',
@@ -1555,6 +1572,26 @@ const app = new Hono<App>()
 	// only — it's the one refusal the client renders as "you are banned" instead of a room
 	// that mysteriously fails to load, and it's what the enum offers.
 	//
+	// ONE exception: a BLOCKED player may still matchmake into their own DORM.
+	// `auth` already issues them a token, because the client has to be signed in to reach
+	// `api`'s moderationBlockDetails — the screen that tells them they are banned, for how long
+	// and why. Refused every matchmake, the client never finishes loading in and never draws
+	// that screen, so a banned player saw nothing but a game that would not start. Their dorm
+	// is private to them and reachable by nobody else, so letting them sit in it costs nothing
+	// and is where they read the ban. Everything else — every public room, club, event,
+	// instance, invite and follow — is still refused, which is the ban.
+	//
+	// Only the two load-in calls, `/matchmake/dorm` and `/matchmake/none` — which one the
+	// client makes depends on the build. `dorm` resolves the CALLER'S dorm and nothing else;
+	// `none` would otherwise hand back whatever instance their presence names, so for a banned
+	// caller its handler answers the dorm outright rather than trusting a stale row.
+	//
+	// Ban EVASION gets the dorm too. `auth` signs those accounts in like any other, so refusing
+	// them the dorm would leave the client stuck on load-in — the exact failure this exception
+	// exists to fix — and they are held to it by the same gate. They see no block screen (that
+	// describes the caller's OWN ban, and they have none), but a player sitting in their dorm
+	// unable to enter any room is where a ban leaves them either way.
+	//
 	// Unauthenticated requests fall through untouched: the route's own `authedId` answers
 	// 401, which mustn't turn into "banned" just because the token was missing.
 	.use('/matchmake/*', async (c, next) => {
@@ -1564,7 +1601,7 @@ const app = new Hono<App>()
 				identity: { ip: c.req.header('cf-connecting-ip') },
 				arms: banEvasionMatch(c.env.BAN_EVASION_MATCH),
 			})
-			if (match) {
+			if (match && !isDormMatchmake(c.req.path)) {
 				logger.info('matchmake refused: player banned', {
 					accountId: id,
 					via: match.via,
@@ -1572,6 +1609,16 @@ const app = new Hono<App>()
 					path: c.req.path,
 				})
 				return matchmakeResult(c, BANNED_FROM_ROOM, null)
+			}
+			if (match) {
+				// Tells `/matchmake/none` to answer the dorm rather than the caller's presence.
+				c.set('bannedToDorm', true)
+				logger.info('blocked player allowed into their own dorm', {
+					accountId: id,
+					via: match.via,
+					reportId: match.ban.id,
+					banExpires: match.ban.ban_expires,
+				})
 			}
 		}
 		await next()
@@ -2763,7 +2810,10 @@ const app = new Hono<App>()
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
 
-			const presence = await getPresence<RoomInstance>(c.env.DB, id)
+			// A BANNED caller gets their dorm whatever their presence says. The ban gate let them
+			// this far so the client can finish loading in and draw the block screen; answering
+			// the instance a stale presence row names would walk them back into a public room.
+			const presence = c.get('bannedToDorm') ? null : await getPresence<RoomInstance>(c.env.DB, id)
 			const current = presence?.roomInstance ?? (await playerDormInstance(c, id))
 			await enterRoom(c, id, current)
 			return matchmakeResult(c, 0, current)

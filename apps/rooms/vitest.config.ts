@@ -23,7 +23,9 @@ export default defineConfig({
 						durableObjects: { RECFLARE_NOTIFICATIONS_HUB: 'NotificationsHub' },
 						// notifyPlayer records every call so tests can assert the notifications the
 						// worker pushed (type + payload). GET /all for the whole list, DELETE to
-						// reset it between assertions.
+						// reset it between assertions. notifyPlayersEphemeral is recorded too, with
+						// `playerIds` and `ephemeral: true`: whether a frame is queued for an offline
+						// player is worth asserting — a queued ModerationKick lands on their next login.
 						script: `
 							import { DurableObject } from 'cloudflare:workers'
 							export class NotificationsHub extends DurableObject {
@@ -31,6 +33,10 @@ export default defineConfig({
 								async notifyPlayer(playerId, notificationType, data) {
 									this.sent.push({ playerId, notificationType, data })
 									return { delivered: 0, queued: true }
+								}
+								async notifyPlayersEphemeral(playerIds, notificationType, data) {
+									this.sent.push({ playerIds, ephemeral: true, notificationType, data })
+									return { delivered: 0 }
 								}
 								async broadcast() { return { delivered: 0 } }
 								async fetch(request) {

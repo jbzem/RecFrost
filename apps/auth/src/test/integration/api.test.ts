@@ -1662,12 +1662,12 @@ describe('banned accounts', () => {
 	})
 })
 
-// The ban follows the player past the account it was written on: a login from an account
-// that shares a proven platform identity or an IP with a banned one is refused, and a
-// signup carrying either is refused before it mints anything. Unlike the banned account
-// itself, such an account has no ban of its own for the block screen to describe, so
-// there is nothing to let it in for. See the api worker's bans-db.ts for the arms and
-// the BAN_EVASION_MATCH knob.
+// The ban follows the player past the account it was written on. SIGNING IN is not where
+// that is enforced: a linked account gets its token like any other, and `match` holds it to
+// its own dorm — refusing the token only ever left the client stuck on a failed login. What
+// IS refused here is a SIGNUP carrying either link, before it mints anything: making a new
+// account to evade with is a different act from signing into one. See the api worker's
+// bans-db.ts for the arms and the BAN_EVASION_MATCH knob.
 describe('ban evasion at the token endpoint', () => {
 	/** Seed a loginable account carrying the IPs it signed up / last logged in from. */
 	const account = async (id: number, name: string, ips: Record<string, string> = {}) => {
@@ -1686,38 +1686,38 @@ describe('ban evasion at the token endpoint', () => {
 	const login = (id: number, ip?: string) =>
 		postToken(`account_id=${id}&password=${LOGIN_PASSWORD}`, ip)
 
-	test('an account sharing a banned account’s platform identity cannot log in', async () => {
+	test('an account sharing a banned account’s platform identity still signs in', async () => {
 		await account(6301, 'EvaderOne')
 		await linkPlatformIdentity(env.DB, 6301, 0, 'steam-tokenevader')
 		await banAccount(6301)
 		await account(6302, 'EvaderTwo')
 		await linkPlatformIdentity(env.DB, 6302, 0, 'steam-tokenevader')
 
+		// A token, like anyone else: the client has to load in before it can be told anything,
+		// and `match` is what keeps this account out of every room but its dorm.
 		const res = await login(6302)
-		expect(res.status).toBe(400)
-		// A vaguer sentence than a direct ban: this account may belong to somebody else.
-		expect(res.json.error_description).toBe('this device or network is blocked')
+		expect(res.status).toBe(200)
+		expect(decodePayload(res.json.access_token as string).sub).toBe('6302')
 	})
 
-	test('an account sharing a banned account’s IP cannot log in', async () => {
+	test('an account sharing a banned account’s IP still signs in', async () => {
 		await account(6303, 'SameHouseBanned', { signupIp: '203.0.113.30' })
 		await banAccount(6303)
 		await account(6304, 'SameHouseClean', { signupIp: '203.0.113.30' })
 
-		const res = await login(6304)
-		expect(res.status).toBe(400)
-		expect(res.json.error_description).toBe('this device or network is blocked')
+		expect((await login(6304)).status).toBe(200)
 	})
 
-	// The address the request arrives from counts, so an account that never logged in
-	// from the banned network before is caught on the first attempt rather than the second.
-	test('the request’s own IP is matched even when the account has none stored', async () => {
+	// The address the request arrives from counts, so a SIGNUP from the banned network is
+	// caught on the first attempt rather than the second.
+	test('the request’s own IP is matched at signup even when the account has none stored', async () => {
 		await account(6305, 'BannedAtHome', { signupIp: '203.0.113.31' })
 		await banAccount(6305)
 		await account(6306, 'CleanElsewhere')
 
-		expect((await login(6306, '203.0.113.31')).status).toBe(400)
-		// The same account from any other network signs in normally.
+		expect((await postToken('grant_type=create_account', '203.0.113.31')).status).toBe(400)
+		// Signing in from that same network is not refused — only minting a new account is.
+		expect((await login(6306, '203.0.113.31')).status).toBe(200)
 		expect((await login(6306, '198.51.100.31')).status).toBe(200)
 	})
 
@@ -1746,7 +1746,8 @@ describe('ban evasion at the token endpoint', () => {
 		expect(res.status).toBe(200)
 	})
 
-	// The knob an operator reaches for when the IP arm locks out real players.
+	// The knob an operator reaches for when the IP arm locks out real players. It governs the
+	// linked arms wherever they are applied — at signup here, and at every matchmake in `match`.
 	test('BAN_EVASION_MATCH=platform drops the IP arm but keeps the platform one', async () => {
 		const original = env.BAN_EVASION_MATCH
 		await account(6320, 'KnobBanned', { signupIp: '203.0.113.50' })
@@ -1758,16 +1759,22 @@ describe('ban evasion at the token endpoint', () => {
 
 		try {
 			env.BAN_EVASION_MATCH = 'platform'
-			expect((await login(6321)).status).toBe(200)
-			expect((await login(6322)).status).toBe(400)
-			// And signup from that network is open again.
+			// Signup from the banned IP is open again, since that arm is off...
 			expect((await postToken('grant_type=create_account', '203.0.113.50')).status).toBe(200)
+			// ...while the platform arm still refuses one from the banned headset.
+			expect(
+				(await postToken('grant_type=create_account&platform=0&platform_id=steam-knobevader'))
+					.status
+			).toBe(400)
 
-			env.BAN_EVASION_MATCH = 'off'
-			expect((await login(6322)).status).toBe(200)
-			// The banned account itself signs in whatever the knob says — its ban is
-			// enforced at matchmake, and the knob only governs the linked arms.
-			expect((await login(6320)).status).toBe(200)
+			// Signing in is not what the knob gates: every one of these gets a token whatever it
+			// says — the housemate, the evader, and the banned account itself.
+			for (const arms of ['platform', 'off']) {
+				env.BAN_EVASION_MATCH = arms
+				for (const id of [6320, 6321, 6322]) {
+					expect((await login(id)).status, `${arms}/${id}`).toBe(200)
+				}
+			}
 		} finally {
 			env.BAN_EVASION_MATCH = original
 		}

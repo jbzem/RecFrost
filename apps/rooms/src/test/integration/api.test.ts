@@ -2507,8 +2507,154 @@ describe('rooms endpoints', () => {
 		await env.DB.prepare('DELETE FROM room_leaderboard WHERE room_id IN (2, 3)').run()
 	})
 
-	it('POST /rooms/:id/bans kicks the banned player', async () => {
-		type Sent = { playerId: number; notificationType: string | number; data: unknown }
+	it('POST /rooms/:id/bans takes a reason and a duration', async () => {
+		type Ban = { Reason: string | null; ExpiresAt: string | null; CreatedAt: string }
+		type Sent = { playerIds: number[]; data: { duration: number; isBan: boolean; message: string } }
+		const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+		// Standing in the room, so there is a session to kick them out of.
+		await putInRoom(310, 2)
+
+		// The client's body, verbatim.
+		const res = await postForm(
+			'/rooms/2/bans',
+			{ banMask: '0', id: '310', reason: 'test', durationMinutes: '30' },
+			'1'
+		)
+		const body = (await envOf(res)) as unknown as { success: boolean; value: Ban }
+		expect(body).toMatchObject({ success: true, value: { BannedPlayerId: 310, Reason: 'test' } })
+		// Lapses thirty minutes after it was issued, to the second.
+		expect(Date.parse(body.value.ExpiresAt!) - Date.parse(body.value.CreatedAt)).toBe(30 * 60_000)
+
+		// The kick carries the reason in its message — but NOT the ban's length, and is not a
+		// ban frame: a duration with `isBan` is what the client shows as a timed GAME ban.
+		const [kick] = (await (await hub().fetch('http://do/all')).json()) as Sent[]
+		expect(kick.playerIds).toEqual([310])
+		expect(kick.data).toMatchObject({ duration: 0, isBan: false })
+		expect(kick.data.message).toMatch(/Reason: test$/)
+
+		// Neither field is required: no duration is a permanent ban, and it still pushes 0.
+		const permanent = (await envOf(
+			await postForm('/rooms/2/bans', { banMask: '0', id: '311' }, '1')
+		)) as unknown as { value: Ban }
+		expect(permanent.value).toMatchObject({ Reason: null, ExpiresAt: null })
+		for (const d of ['', '0']) {
+			const v = (await envOf(
+				await postForm('/rooms/2/bans', { id: '312', durationMinutes: d }, '1')
+			)) as unknown as { value: Ban }
+			expect(v.value.ExpiresAt, d).toBeNull()
+		}
+
+		// A re-ban REPLACES the duration and reason — it neither extends nor keeps the old ones.
+		const rebanned = (await envOf(
+			await postForm('/rooms/2/bans', { id: '310' }, '1')
+		)) as unknown as { value: Ban }
+		expect(rebanned.value).toMatchObject({ Reason: null, ExpiresAt: null })
+	})
+
+	it('POST /rooms/:id/bans deletes the banned player’s presence in that room', async () => {
+		const presenceOf = (accountId: number) =>
+			env.DB.prepare('SELECT room_id FROM presence WHERE account_id = ?1')
+				.bind(accountId)
+				.first<{ room_id: number }>()
+		const instanceId = 1000002 // what `putInRoom` puts room 2's players in
+		const isFull = async () =>
+			(
+				await env.DB.prepare('SELECT is_full FROM room_instance WHERE id = ?1')
+					.bind(instanceId)
+					.first<{ is_full: number }>()
+			)?.is_full
+
+		// A one-seat instance of room 2 that 320 is filling.
+		await env.DB.prepare('INSERT INTO room_instance (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					roomInstanceId: instanceId,
+					roomId: 2,
+					subRoomId: 2,
+					maxCapacity: 1,
+					isFull: true,
+				})
+			)
+			.run()
+		await putInRoom(320, 2)
+		// 321 is standing in a DIFFERENT room.
+		await putInRoom(321, 4)
+
+		expect((await postForm('/rooms/2/bans', { banMask: '0', id: '320' }, '1')).status).toBe(200)
+		// Gone from the room they were banned from, and the seat they held is free again.
+		expect(await presenceOf(320)).toBeNull()
+		expect(await isFull()).toBe(0)
+
+		// A ban from room 2 does not knock someone offline from room 4.
+		expect((await postForm('/rooms/2/bans', { banMask: '0', id: '321' }, '1')).status).toBe(200)
+		expect(await presenceOf(321)).toEqual({ room_id: 4 })
+
+		await clearPresence(321)
+		await env.DB.prepare('DELETE FROM room_instance WHERE id = ?1').bind(instanceId).run()
+	})
+
+	it('POST /rooms/:id/bans refuses a duration it cannot read, rather than banning forever', async () => {
+		for (const durationMinutes of ['thirty', '-5', '1.5']) {
+			expect(
+				await envOf(await postForm('/rooms/2/bans', { id: '313', durationMinutes }, '1')),
+				durationMinutes
+			).toMatchObject({ success: false, error: 'You must provide a valid ban duration!' })
+		}
+		const row = await env.DB.prepare(
+			'SELECT 1 FROM room_ban WHERE room_id = 2 AND banned_player_id = 313'
+		).first()
+		expect(row).toBeNull()
+	})
+
+	it('a lapsed room ban stops counting everywhere without being lifted', async () => {
+		// Written straight to the table: an hour-long ban issued two hours ago.
+		const issued = new Date(Date.now() - 2 * 3_600_000)
+		await env.DB.prepare(
+			`INSERT INTO room_ban
+				 (room_id, banned_player_id, ban_mask, banned_by_account_id, created_at, reason, expires_at)
+			 VALUES (2, 314, 0, 1, ?1, 'old', ?2)`
+		)
+			.bind(issued.toISOString(), new Date(issued.getTime() + 3_600_000).toISOString())
+			.run()
+
+		// `isBanned` — the same check `match` refuses matchmakes on.
+		const isBanned = await SELF.fetch(`${ORIGIN}/rooms/2/bans/314/isBanned`, {
+			headers: await bearer('314'),
+		})
+		expect(await isBanned.json()).toMatchObject({ Value: false })
+
+		// Not in the ban list.
+		const list = (await (
+			await SELF.fetch(`${ORIGIN}/rooms/2/bans`, { headers: await bearer('1') })
+		).json()) as Array<{ accountId: number }>
+		expect(list.some((b) => b.accountId === 314)).toBe(false)
+
+		// Unbanning it is "not banned", like any other player who isn't.
+		const unban = await SELF.fetch(`${ORIGIN}/rooms/2/bans/314`, {
+			method: 'DELETE',
+			headers: await bearer('1'),
+		})
+		expect(await unban.json()).toMatchObject({ success: false })
+
+		// A ban still in force DOES count — the filter is on the expiry, not on having one.
+		expect(
+			(await postForm('/rooms/2/bans', { id: '315', durationMinutes: '30' }, '1')).status
+		).toBe(200)
+		const stillBanned = await SELF.fetch(`${ORIGIN}/rooms/2/bans/315/isBanned`, {
+			headers: await bearer('315'),
+		})
+		expect(await stillBanned.json()).toMatchObject({ Value: true })
+	})
+
+	it('POST /rooms/:id/bans kicks a banned player out of the room — without banning them from the game', async () => {
+		type Sent = {
+			playerId?: number
+			playerIds?: number[]
+			ephemeral?: boolean
+			notificationType: string | number
+			data: unknown
+		}
 		const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
 		const sentSince = async (): Promise<Sent[]> =>
 			(await (await hub().fetch('http://do/all')).json()) as Sent[]
@@ -2516,27 +2662,30 @@ describe('rooms endpoints', () => {
 		// The room's current name, read rather than hardcoded — earlier tests rename it.
 		const { Name } = (await (await SELF.fetch(`${ORIGIN}/rooms/2`)).json()) as { Name: string }
 
+		await putInRoom(207, 2)
 		await hub().fetch('http://do/all', { method: 'DELETE' })
 		expect((await postForm('/rooms/2/bans', { banMask: '0', id: '207' }, '1')).status).toBe(200)
 
-		// A ModerationKick (id 22) to the BANNED player, not the caller — it ejects them
-		// from the instance they're in now; the row keeps them out of future matchmakes.
+		// One EPHEMERAL ModerationKick to the banned player, out of the instance they were in.
 		// Asserted against the enum rather than a literal: the ids are notify's to change.
 		expect(await sentSince()).toEqual([
 			{
-				playerId: 207,
+				playerIds: [207],
+				ephemeral: true,
 				notificationType: NotificationType.ModerationKick,
 				// The client's moderation payload, camelCase, in wire order.
 				data: {
 					reportCategory: -1, // Moderator — a person acted, not the system
-					duration: 0, // a room ban has no expiry
-					gameSessionId: 0,
-					// The host ejected them (as opposed to a room vote-kick, which doesn't
-					// exist yet). Account 1 owns RecCenter, so it hosts it.
+					duration: 0,
+					gameSessionId: 1000002, // the instance `putInRoom` stood them in
+					// Account 1 owns RecCenter, so it hosts it.
 					isHostKick: true,
 					message: `You have been banned from ${Name}.`,
 					playerIdReporter: 1,
-					isBan: true,
+					// FALSE. `isBan: true` is what the client shows as a ban from the whole game
+					// — the account ban's frame. A room ban is enforced by the row, when `match`
+					// refuses them the room; this frame only ejects them from the session.
+					isBan: false,
 					isVoiceModAutoban: false,
 				},
 			},
@@ -2544,14 +2693,26 @@ describe('rooms endpoints', () => {
 
 		// A staff moderator doesn't host the room, so it isn't a host kick — and
 		// `playerIdReporter` is still whoever caused it.
+		await putInRoom(208, 2)
 		await hub().fetch('http://do/all', { method: 'DELETE' })
 		expect(
 			(await postForm('/rooms/2/bans', { id: '208' }, '999', ['gameClient', 'moderator'])).status
 		).toBe(200)
 		expect((await sentSince())[0]).toMatchObject({
-			playerId: 208,
-			data: { isHostKick: false, playerIdReporter: 999 },
+			playerIds: [208],
+			data: { isHostKick: false, playerIdReporter: 999, isBan: false },
 		})
+
+		// A player who is NOT in the room has nothing to be kicked out of, and hears NOTHING —
+		// not now, and not queued for their next connect, which is how a room ban once greeted
+		// players with a ban screen on login.
+		await putInRoom(216, 4)
+		await hub().fetch('http://do/all', { method: 'DELETE' })
+		expect((await postForm('/rooms/2/bans', { id: '216' }, '1')).status).toBe(200)
+		expect((await postForm('/rooms/2/bans', { id: '217' }, '1')).status).toBe(200)
+		expect(await sentSince()).toEqual([])
+
+		for (const id of [216]) await clearPresence(id)
 	})
 
 	it('GET /rooms/:id/bans lists the room’s bans, under the same gate', async () => {
@@ -2584,6 +2745,258 @@ describe('rooms endpoints', () => {
 		// An unknown room reads the same as a room with nobody banned — no probing which
 		// room ids exist.
 		expect(await (await list('/rooms/99999/bans', '1')).json()).toEqual([])
+	})
+
+	it('GET /rooms/:id/bans/history serves the client’s exact shape', async () => {
+		const history = async (playerId: number) =>
+			(await (
+				await SELF.fetch(`${ORIGIN}/rooms/2/bans/history?id=${playerId}`, {
+					headers: await bearer('1'),
+				})
+			).json()) as {
+				Value: {
+					ActiveBan: Record<string, unknown> | null
+					PreviousBans: Array<Record<string, unknown>>
+				}
+				Success: boolean
+				Error: string | null
+				error_id: string | null
+			}
+
+		expect(
+			(await postForm('/rooms/2/bans', { banMask: '0', id: '340', reason: 'test' }, '1')).status
+		).toBe(200)
+		const body = await history(340)
+
+		// The envelope, PascalCase with a lowercase `error_id`, and a Value of exactly two keys.
+		expect(Object.keys(body)).toEqual(['Value', 'Success', 'Error', 'error_id'])
+		expect(body).toMatchObject({ Success: true, Error: null, error_id: null })
+		expect(Object.keys(body.Value)).toEqual(['ActiveBan', 'PreviousBans'])
+
+		// Seven keys in the CLIENT'S order — derived members first, so AccountId is fifth.
+		const active = body.Value.ActiveBan!
+		expect(Object.keys(active)).toEqual([
+			'Status',
+			'UnbannedByAccountId',
+			'BanEndTime',
+			'Reason',
+			'AccountId',
+			'BannedByAccountId',
+			'BanStartTime',
+		])
+		expect(active).toMatchObject({
+			Status: 0, // Active
+			UnbannedByAccountId: null,
+			BanEndTime: null, // permanent
+			Reason: 'test',
+			AccountId: 340,
+			BannedByAccountId: 1,
+		})
+		// UTC to the second, as the client's example carries it.
+		expect(active.BanStartTime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
+		expect(body.Value.PreviousBans).toEqual([])
+
+		// A ban with no reason is `""`, never null; a timed one carries its scheduled end.
+		expect(
+			(await postForm('/rooms/2/bans', { id: '341', durationMinutes: '30' }, '1')).status
+		).toBe(200)
+		const timed = (await history(341)).Value.ActiveBan!
+		expect(timed.Reason).toBe('')
+		expect(Date.parse(timed.BanEndTime as string) - Date.parse(timed.BanStartTime as string)).toBe(
+			30 * 60_000
+		)
+
+		// Someone never banned has no history at all.
+		expect((await history(349)).Value).toEqual({ ActiveBan: null, PreviousBans: [] })
+	})
+
+	it('GET /rooms/:id/bans/history keeps lifted and elapsed bans, newest first', async () => {
+		type Rec = {
+			Status: number
+			UnbannedByAccountId: number | null
+			BanEndTime: string | null
+			Reason: string
+		}
+		const history = async (playerId: number) =>
+			(
+				(await (
+					await SELF.fetch(`${ORIGIN}/rooms/2/bans/history?id=${playerId}`, {
+						headers: await bearer('1'),
+					})
+				).json()) as { Value: { ActiveBan: Rec | null; PreviousBans: Rec[] } }
+			).Value
+		const unban = async (playerId: number, sub: string) =>
+			SELF.fetch(`${ORIGIN}/rooms/2/bans/${playerId}`, {
+				method: 'DELETE',
+				headers: await bearer(sub),
+			})
+
+		// LIFTED: banned by the owner, unbanned early by the co-owner.
+		expect((await postForm('/rooms/2/bans', { id: '342', reason: 'first' }, '1')).status).toBe(200)
+		expect((await unban(342, '2')).status).toBe(200)
+		let h = await history(342)
+		expect(h.ActiveBan).toBeNull()
+		expect(h.PreviousBans).toHaveLength(1)
+		expect(h.PreviousBans[0]).toMatchObject({ Status: 2, UnbannedByAccountId: 2, Reason: 'first' })
+		expect(h.PreviousBans[0].BanEndTime).not.toBeNull()
+
+		// Banned and lifted again: two previous bans, the newest first.
+		expect((await postForm('/rooms/2/bans', { id: '342', reason: 'second' }, '1')).status).toBe(200)
+		expect((await unban(342, '1')).status).toBe(200)
+		h = await history(342)
+		expect(h.PreviousBans.map((b) => b.Reason)).toEqual(['second', 'first'])
+
+		// ELAPSED: a one-hour ban issued two hours ago, never touched since. It is not active,
+		// and it is already reported as a previous ban before anything files it.
+		const issued = new Date(Date.now() - 2 * 3_600_000)
+		const expired = new Date(issued.getTime() + 3_600_000).toISOString()
+		await env.DB.prepare(
+			`INSERT INTO room_ban
+				 (room_id, banned_player_id, ban_mask, banned_by_account_id, created_at, reason, expires_at)
+			 VALUES (2, 343, 0, 1, ?1, 'lapsed', ?2)`
+		)
+			.bind(issued.toISOString(), expired)
+			.run()
+		h = await history(343)
+		expect(h.ActiveBan).toBeNull()
+		expect(h.PreviousBans).toEqual([
+			expect.objectContaining({ Status: 1, UnbannedByAccountId: null, Reason: 'lapsed' }),
+		])
+
+		// A new ban replaces the stale row — and FILES the lapsed one, exactly once, rather than
+		// losing it or counting it twice.
+		expect((await postForm('/rooms/2/bans', { id: '343', reason: 'again' }, '1')).status).toBe(200)
+		h = await history(343)
+		expect(h.ActiveBan).toMatchObject({ Status: 0, Reason: 'again' })
+		expect(h.PreviousBans).toEqual([
+			expect.objectContaining({ Status: 1, UnbannedByAccountId: null, Reason: 'lapsed' }),
+		])
+		// Elapsed at its expiry, not at the moment it was replaced.
+		expect(Date.parse(h.PreviousBans[0].BanEndTime!)).toBe(
+			Math.floor(Date.parse(expired) / 1000) * 1000
+		)
+
+		// Re-issuing a ban still in force AMENDS it: one active ban, nothing filed.
+		expect((await postForm('/rooms/2/bans', { id: '344', reason: 'v1' }, '1')).status).toBe(200)
+		expect((await postForm('/rooms/2/bans', { id: '344', reason: 'v2' }, '2')).status).toBe(200)
+		h = await history(344)
+		expect(h.ActiveBan).toMatchObject({ Reason: 'v2' })
+		expect(h.PreviousBans).toEqual([])
+
+		// The bulk unban files a lift the same way the single one does.
+		await SELF.fetch(`${ORIGIN}/rooms/2/bans/bulk`, {
+			method: 'DELETE',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', ...(await bearer('1')) },
+			body: 'banMask=0&id=344',
+		})
+		h = await history(344)
+		expect(h.ActiveBan).toBeNull()
+		expect(h.PreviousBans).toEqual([
+			expect.objectContaining({ Status: 2, UnbannedByAccountId: 1, Reason: 'v2' }),
+		])
+	})
+
+	it('GET /rooms/:id/bans/history is gated like the ban list', async () => {
+		const get = async (path: string, sub?: string, roles?: string[]) =>
+			SELF.fetch(`${ORIGIN}${path}`, { headers: sub ? await bearer(sub, roles) : {} })
+		expect((await postForm('/rooms/2/bans', { id: '345' }, '1')).status).toBe(200)
+
+		expect((await get('/rooms/2/bans/history?id=345')).status).toBe(401)
+		expect((await get('/rooms/2/bans/history?id=345', '999')).status).toBe(403)
+		// The co-owner, and a staff token with no role on the room.
+		for (const [sub, roles] of [
+			['2', undefined],
+			['999', ['gameClient', 'moderator']],
+		] as const) {
+			const res = await get('/rooms/2/bans/history?id=345', sub, roles as string[] | undefined)
+			expect(res.status, sub).toBe(200)
+			expect(
+				((await res.json()) as { Value: { ActiveBan: unknown } }).Value.ActiveBan
+			).not.toBeNull()
+		}
+
+		// An unknown room is an empty history, not an error.
+		expect(await (await get('/rooms/99999/bans/history?id=345', '999')).json()).toEqual({
+			Value: { ActiveBan: null, PreviousBans: [] },
+			Success: true,
+			Error: null,
+			error_id: null,
+		})
+		// A missing or non-numeric id.
+		for (const q of ['', '?id=nope']) {
+			expect(await (await get(`/rooms/2/bans/history${q}`, '1')).json(), q).toEqual({
+				Value: null,
+				Success: false,
+				Error: 'You must provide a valid player!',
+				error_id: null,
+			})
+		}
+	})
+
+	it('DELETE /rooms/:id/bans/bulk removes the named bans, under the same gate', async () => {
+		type Removed = {
+			success: boolean
+			error: string
+			value: Array<{ BannedPlayerId: number }> | null
+		}
+		const unban = async (body: string, sub?: string, roles?: string[]) =>
+			SELF.fetch(`${ORIGIN}/rooms/2/bans/bulk`, {
+				method: 'DELETE',
+				headers: {
+					'content-type': 'application/x-www-form-urlencoded',
+					...(sub ? await bearer(sub, roles) : {}),
+				},
+				body,
+			})
+		const banned = async (playerId: number) =>
+			(await env.DB.prepare('SELECT 1 FROM room_ban WHERE room_id = 2 AND banned_player_id = ?1')
+				.bind(playerId)
+				.first()) !== null
+		for (const id of ['330', '331', '332', '333']) {
+			expect((await postForm('/rooms/2/bans', { id }, '1')).status).toBe(200)
+		}
+
+		// No token → 401; a valid token with no standing in the room → 403. Nothing removed.
+		expect((await unban('banMask=0&id=330')).status).toBe(401)
+		expect((await unban('banMask=0&id=330', '999')).status).toBe(403)
+		expect(await banned(330)).toBe(true)
+
+		// The client's body, verbatim, from the owner.
+		const one = await unban('banMask=0&id=330', '1')
+		expect(one.status).toBe(200)
+		expect((await one.json()) as Removed).toMatchObject({
+			success: true,
+			error: '',
+			value: [{ BannedPlayerId: 330 }],
+		})
+		expect(await banned(330)).toBe(false)
+
+		// Repeated `id` lifts every one of them — not just the last — from a co-owner, and a player
+		// who is not banned (330, already lifted) is skipped rather than failing the others.
+		const many = (await (await unban('banMask=0&id=331&id=330&id=332', '2')).json()) as Removed
+		expect(many).toMatchObject({ success: true })
+		expect(many.value!.map((b) => b.BannedPlayerId)).toEqual([331, 332])
+		expect(await banned(331)).toBe(false)
+		expect(await banned(332)).toBe(false)
+
+		// A staff token works in a room it has no role on, and a comma-separated id is read too.
+		expect(
+			(await (await unban('id=333,334', '999', ['gameClient', 'moderator'])).json()) as Removed
+		).toMatchObject({ success: true, value: [{ BannedPlayerId: 333 }] })
+
+		// Nothing banned among the names is still a success, with nothing removed.
+		expect((await (await unban('id=330', '1')).json()) as Removed).toMatchObject({
+			success: true,
+			value: [],
+		})
+		// A body naming no valid player at all is the one rejection.
+		for (const body of ['banMask=0', 'id=nope']) {
+			expect((await (await unban(body, '1')).json()) as Removed, body).toMatchObject({
+				success: false,
+				error: 'You must provide a valid player to unban!',
+				value: null,
+			})
+		}
 	})
 
 	it('DELETE /rooms/:id/bans/:playerId lifts a ban, under the same gate', async () => {
@@ -4654,6 +5067,7 @@ describe('rooms endpoints', () => {
 		)
 		expect([...documented].sort()).toEqual([
 			'DELETE /rooms/{roomId}',
+			'DELETE /rooms/{roomId}/bans/bulk',
 			'DELETE /rooms/{roomId}/bans/{playerId}',
 			'DELETE /rooms/{roomId}/interactionby/me/cheer',
 			'DELETE /rooms/{roomId}/interactionby/me/favorite',
@@ -4683,6 +5097,7 @@ describe('rooms endpoints', () => {
 			'GET /rooms/visitedby/{playerId}',
 			'GET /rooms/{roomId}',
 			'GET /rooms/{roomId}/bans',
+			'GET /rooms/{roomId}/bans/history',
 			'GET /rooms/{roomId}/bans/{playerId}/isBanned',
 			'GET /rooms/{roomId}/experience',
 			'GET /rooms/{roomId}/experience/player',

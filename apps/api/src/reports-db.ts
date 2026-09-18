@@ -467,3 +467,84 @@ export async function getBansInForce(
 		.all<ReportRow>()
 	return results
 }
+
+// ---- Block details ----------------------------------------------------------
+
+/**
+ * `Duration` on a permanent ban. The client's field is a 32-bit int of seconds that PAIRS
+ * with `TimeoutStartedAt` — start + duration is the end of the block — so a ban with no
+ * end gets the largest value the field holds, 68 years past its start.
+ */
+export const PERMANENT_BAN_DURATION = 2_147_483_647
+
+/**
+ * The "not blocked" answer — the reference server's stub `ReturnModerationBlockDetails()`,
+ * widened to every key the client's `ModerationBlockDetail` decoder names (16 on the wire;
+ * the 2025 build's formatter reads them all). The ones past the stub's nine are the block
+ * kinds and screen dressings this server never uses — a device ban, a warning, the
+ * vote-kick reason, an associated account, the creator code of conduct, the top/bottom
+ * message overrides — so they carry their "none" values on every answer.
+ */
+export const NOT_BLOCKED = {
+	ReportCategory: -1,
+	Duration: 0,
+	GameSessionId: 0,
+	IsHostKick: false,
+	Message: null,
+	PlayerIdReporter: null,
+	IsBan: false,
+	IsVoiceModAutoban: false,
+	IsDeviceBan: false,
+	IsWarning: false,
+	VoteKickReason: null,
+	TimeoutStartedAt: null,
+	AssociatedAccountUsername: null,
+	ShowCreatorCodeOfConduct: false,
+	TopMessageOverride: null,
+	BottomMessageOverride: null,
+}
+
+/**
+ * The block details for a ban in force — the `report` row a moderator set `banned` on.
+ *
+ * Shared by the two places a player meets an account ban: `api`'s `moderationBlockDetails`
+ * (the screen at sign-in) and `www`'s live `ModerationKick` frame (the screen when the ban is
+ * handed down mid-session). Built once here so both screens describe the same ban.
+ *
+ * `Duration` and `TimeoutStartedAt` are a PAIR in the client: the block runs from the
+ * start for the duration. The start is `banned_at`, the instant the ban was handed down
+ * (see 0020_report_ban_audit.sql), and the duration is the seconds from there to
+ * `ban_expires`, so the two sum to the expiry; or `PERMANENT_BAN_DURATION` when there is
+ * none.
+ *
+ * It falls back to the report's `created_at` for a row banned before that column existed.
+ * The two can be months apart, and using `created_at` as the start — which is what this
+ * did before there was anything else to use — misreports both halves of the pair: a 7-day
+ * ban applied to a 30-day-old report told the player their block began a month ago and
+ * ended three weeks ago. Every pre-migration row still reads exactly as it used to, which
+ * is the point of the fallback rather than a coalesce to now.
+ *
+ * The category is the one the report was
+ * filed under, so the client's ban screen names the reason. `Message` is a fixed "Rule
+ * violation" rather than the report's `details` — those are the REPORTER's words, and the
+ * banned player isn't shown them, for the same reason `PlayerIdReporter` stays null: the
+ * reporter is not a host who kicked them, and naming them would tell the banned player who
+ * reported them. Everything else keeps its `NOT_BLOCKED` value: the other block kinds and
+ * screen dressings, none of which this server hands out.
+ */
+export function banBlockDetails(ban: ReportRow) {
+	const startedAtIso = ban.banned_at ?? ban.created_at
+	const startedAt = Date.parse(startedAtIso)
+	const duration =
+		ban.ban_expires === null
+			? PERMANENT_BAN_DURATION
+			: Math.max(1, Math.ceil((Date.parse(ban.ban_expires) - startedAt) / 1000))
+	return {
+		...NOT_BLOCKED,
+		ReportCategory: ban.report_category,
+		Duration: duration,
+		IsBan: true,
+		Message: 'Rule violation',
+		TimeoutStartedAt: startedAtIso,
+	}
+}

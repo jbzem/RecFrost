@@ -1477,6 +1477,18 @@ export const InstantKickRequest = z.object({
 	PlayerIds: z.array(z.int()).describe('Account ids to kick out of that instance'),
 })
 
+/** `POST /api/PlayerReporting/v1/roomModKick` form body — one player out of one instance. */
+export const RoomModKickRequest = z.object({
+	PlayerId: z.string().describe('Account id of the player to kick'),
+	GameSessionId: z
+		.string()
+		.describe('The room instance (game session) to eject them from — they must be standing in it'),
+	Reason: z
+		.string()
+		.optional()
+		.describe('Free text, shown to the kicked player in the kick message'),
+})
+
 /** `POST /api/PlayerReporting/v1/deviceId` form body — the id rotation the client reports. */
 export const DeviceIdRequest = z.object({
 	oldDeviceId: z.string().optional().describe('The id the client thinks we hold'),

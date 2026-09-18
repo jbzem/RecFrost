@@ -91,7 +91,15 @@ export type Env = SharedHonoEnv & {
 }
 
 /** Variables can be extended */
-export type Variables = SharedHonoVariables
+export type Variables = SharedHonoVariables & {
+	/**
+	 * Set by the `/matchmake/*` ban gate when it lets a BANNED account through to its own
+	 * dorm. Only `/matchmake/dorm` and `/matchmake/none` are let through, and `none` reads
+	 * this to answer the dorm rather than whatever instance the caller's presence names —
+	 * which for a stale row is a public room the ban must keep them out of.
+	 */
+	bannedToDorm?: boolean
+}
 
 export interface App extends HonoApp {
 	Bindings: Env

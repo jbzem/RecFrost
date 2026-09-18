@@ -8,6 +8,7 @@ import { validateAndGetAccountId, validateAndGetRoles } from '@repo/jwt'
 // module comment below.
 import { banEvasionMatch, linkedAccounts } from '../../api/src/bans-db'
 import {
+	banBlockDetails,
 	banFromReport,
 	createReport,
 	getActiveBan,
@@ -20,11 +21,10 @@ import {
 import { getWarningsAgainst } from '../../api/src/warnings-db'
 // The notification ids and the kick frame's recovered shape, owned by `notify`. Both are
 // imported as values/types with no runtime dependencies.
-import { KickReportCategory } from '../../notify/src/notification-payloads'
 import { NotificationType } from '../../notify/src/notification-types'
 
 import type { Context, MiddlewareHandler } from 'hono'
-import type { ReportSearch } from '../../api/src/reports-db'
+import type { ReportRow, ReportSearch } from '../../api/src/reports-db'
 import type { ModerationKickPayload } from '../../notify/src/notification-payloads'
 import type { App, Env } from './context'
 
@@ -152,46 +152,59 @@ function banExpiry(
 }
 
 /**
- * Throw the banned player out of whatever instance they are standing in.
+ * Tell a player they have been banned from the GAME, and throw them out of wherever they are.
  *
- * Without this a ban only takes effect on the player's NEXT matchmake: `match` refuses a
- * banned player, but nothing revisits a session already in progress, so someone banned
- * mid-session keeps playing until they leave on their own.
+ * Without this a ban only takes effect on the player's NEXT sign-in or matchmake: `match`
+ * refuses a banned player and `moderationBlockDetails` blocks them at login, but nothing
+ * revisits a session already in progress, so someone banned mid-session keeps playing.
  *
- * Mirrors `api`'s instant kick — presence row deleted (they read offline at once and the
- * instance frees a slot), instance fullness recomputed, and a `ModerationKick` frame (id
- * 22) pushed EPHEMERALLY. `IsBan` is true here, which is what makes the client's screen
- * name it as a ban rather than a kick, and an offline player needs no frame: they meet the
- * ban at `moderationBlockDetails` when they next sign in.
+ * The frame is a `ModerationKick` (id 22) with `IsBan: true` — the frame the client's
+ * moderation screen shows as a ban from the game. This is the ONE place that frame belongs: a
+ * ROOM ban must never send it (`rooms` sends `IsBan: false` and is enforced by refusing the
+ * room), because the client cannot tell the two apart and shows a game-wide ban screen.
  *
- * Entirely best-effort. The ban row is already committed by the time this runs; a hub
- * hiccup or a missing presence must not fail a ban that has been handed down.
+ * Its contents are {@link banBlockDetails} — the same `ReportCategory`, `Message` and the
+ * `Duration`/`TimeoutStartedAt` pair `moderationBlockDetails` answers for this ban — so the
+ * screen a player sees mid-session is the screen they see when they next sign in, not a
+ * generic "banned" with no length.
+ *
+ * Sent to anyone ONLINE, not only to a player standing in an instance: someone in a menu is
+ * as banned as someone in a room. `GameSessionId` is their instance, or 0 when they are in
+ * none. EPHEMERAL, because an offline player needs no frame — they meet the same screen at
+ * `moderationBlockDetails` when they next sign in — and a queued one would fire again then.
+ *
+ * Their presence row is deleted (they read offline at once), and the instance they were in,
+ * if any, has its fullness recomputed so a full room frees a slot.
+ *
+ * Entirely best-effort. The ban row is already committed by the time this runs; a hub hiccup
+ * or a missing presence must not fail a ban that has been handed down.
  */
-async function kickBannedPlayer(c: Context<App>, playerId: number, moderatorId: number) {
+async function kickBannedPlayer(c: Context<App>, report: ReportRow, moderatorId: number) {
+	const playerId = report.reported_player_id
 	try {
 		const presence = (await getPresences<{ roomInstanceId?: number }>(c.env.DB, [playerId])).get(
 			playerId
 		)
-		const gameSessionId = presence?.roomInstance?.roomInstanceId
-		// Not online, or online but not in an instance (the lobby) — nothing to eject them
-		// from. Their presence row still goes, so they read offline immediately.
-		if (presence) await deletePresence(c.env.DB, playerId)
-		if (gameSessionId === undefined) return
+		// Offline: nothing to eject and nobody to tell. The sign-in check has them.
+		if (!presence) return
 
-		await refreshInstanceFullness(c.env.DB, gameSessionId)
+		await deletePresence(c.env.DB, playerId)
+		const gameSessionId = presence.roomInstance?.roomInstanceId
+		if (gameSessionId !== undefined) await refreshInstanceFullness(c.env.DB, gameSessionId)
 
+		const block = banBlockDetails(report)
 		const frame: ModerationKickPayload = {
-			ReportCategory: KickReportCategory.Moderator,
-			Duration: 0,
-			GameSessionId: gameSessionId,
+			ReportCategory: block.ReportCategory,
+			Duration: block.Duration,
+			GameSessionId: gameSessionId ?? 0,
 			IsHostKick: false,
-			Message: 'You have been banned.',
+			Message: block.Message,
 			PlayerIdReporter: null,
 			IsBan: true,
 			IsVoiceModAutoban: false,
 			IsWarning: false,
 			VoteKickReason: '',
-			TimeoutStartedAt: null,
+			TimeoutStartedAt: block.TimeoutStartedAt,
 		}
 		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayersEphemeral(
 			[playerId],
@@ -199,7 +212,7 @@ async function kickBannedPlayer(c: Context<App>, playerId: number, moderatorId: 
 			{ ...frame }
 		)
 	} catch (err) {
-		logger.error('failed to kick a banned player out of their instance', {
+		logger.error('failed to tell a banned player they are banned', {
 			playerId,
 			moderatorId,
 			error: err instanceof Error ? err.message : String(err),
@@ -346,7 +359,7 @@ export async function banReportHandler(c: Context<App>) {
 		banExpires: report.ban_expires,
 	})
 
-	if (banned) await kickBannedPlayer(c, report.reported_player_id, moderatorId)
+	if (banned) await kickBannedPlayer(c, report, moderatorId)
 	return c.json(report)
 }
 

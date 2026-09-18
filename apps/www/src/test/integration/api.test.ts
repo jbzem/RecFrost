@@ -937,12 +937,53 @@ it('throws a banned player out of the instance they are standing in', async () =
 	expect(frames[0].data.IsBan).toBe(true)
 	expect(frames[0].data.GameSessionId).toBe(77001)
 
+	// The SAME ban the sign-in screen describes, not a generic one: its category, message and
+	// the Duration/TimeoutStartedAt pair, three days from when it was handed down.
+	const banned = await getReportById(env.DB, report.id)
+	expect(frames[0].data).toMatchObject({
+		ReportCategory: banned!.report_category,
+		Message: 'Rule violation',
+		TimeoutStartedAt: banned!.banned_at,
+		Duration: 3 * 86_400,
+	})
+
 	// And their presence row is gone, so they read offline at once and the instance frees
 	// a slot.
 	const presence = await env.DB.prepare(
 		"SELECT COUNT(*) AS n FROM presence WHERE json_extract(data, '$.accountId') = 8190"
 	).first<{ n: number }>()
 	expect(presence?.n).toBe(0)
+})
+
+// Online but not standing in any room — in a menu — is still banned from the game, and is
+// told so now rather than at their next sign-in.
+it('tells a banned player who is online but in no instance', async () => {
+	const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+	await hub().fetch('http://do/all', { method: 'DELETE' })
+
+	await setPresence(env.DB, {
+		accountId: 8195,
+		roomInstance: null,
+		statusVisibility: 0,
+		deviceClass: 0,
+		vrMovementMode: 0,
+		platform: 4,
+		appVersion: 'test',
+	})
+	const report = await createReport(env.DB, { reporterPlayerId: 8196, reportedPlayerId: 8195 })
+	expect(
+		(await staffPost(`/api/staff/reports/${report.id}/ban`, 8110, { permanent: true })).status
+	).toBe(200)
+
+	const frames = (await (await hub().fetch('http://do/all')).json()) as Array<{
+		playerIds?: number[]
+		ephemeral?: boolean
+		data: Record<string, unknown>
+	}>
+	expect(frames).toHaveLength(1)
+	expect(frames[0]).toMatchObject({ playerIds: [8195], ephemeral: true })
+	// No session to name, and a permanent ban carries the largest duration the field holds.
+	expect(frames[0].data).toMatchObject({ IsBan: true, GameSessionId: 0, Duration: 2_147_483_647 })
 })
 
 // The ban row is committed before the kick is attempted, so a player who is offline (or

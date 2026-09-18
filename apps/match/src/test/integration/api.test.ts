@@ -3349,14 +3349,13 @@ describe('account bans', () => {
 			headers: await bearer(player),
 		})
 
-	test('every matchmake route is refused for a banned account', async () => {
+	test('every matchmake route but the load-in ones is refused for a banned account', async () => {
 		await banAccount(6001)
 		// One live instance of room 2 and one club membership, so each route would
 		// otherwise have somewhere to put them.
 		for (const path of [
 			'/matchmake/room/2',
 			'/matchmake/room/77/34',
-			'/matchmake/dorm',
 			'/matchmake/club/4',
 			'/matchmake/player/9701',
 			'/matchmake/instance/1',
@@ -3365,6 +3364,94 @@ describe('account bans', () => {
 			expect(res.status, path).toBe(200)
 			expect(await res.json(), path).toEqual(refused(55))
 		}
+	})
+
+	// The client has to finish loading in to draw the block screen that tells the player they
+	// are banned — `auth` issues them a token for exactly that reason. Refused their own dorm
+	// too, they never get that far and just see a game that will not start.
+	test('a banned account may still matchmake into its own dorm', async () => {
+		await banAccount(6008)
+		const res = await matchmake('/matchmake/dorm', '6008')
+		expect(res.status).toBe(200)
+		const body = (await res.json()) as {
+			errorCode: number
+			roomInstance: { roomInstanceId: number; roomId: number } | null
+		}
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).not.toBeNull()
+
+		// Their OWN dorm, the same one every time — not a room anyone else can reach.
+		const again = (await (await matchmake('/matchmake/dorm', '6008')).json()) as {
+			roomInstance: { roomInstanceId: number } | null
+		}
+		expect(again.roomInstance?.roomInstanceId).toBe(body.roomInstance!.roomInstanceId)
+
+		// And it is only the dorm — the ban is otherwise untouched.
+		expect(await (await matchmake('/matchmake/room/2', '6008')).json()).toEqual(refused(55))
+	})
+
+	// `/matchmake/none` is the other load-in call, and which one the client makes depends on
+	// the build. It normally answers the instance the caller's presence names — so for a banned
+	// caller it must answer the DORM instead, or a stale presence row walks them straight back
+	// into the public room they were standing in.
+	test('a banned account’s /matchmake/none answers the dorm, not their stale presence', async () => {
+		await banAccount(6011)
+		// Standing in a live instance of room 2, the way a player banned mid-session is.
+		const joined = (await (await matchmake('/matchmake/room/2', '9701')).json()) as {
+			roomInstance: { roomInstanceId: number; roomId: number }
+		}
+		await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					accountId: 6011,
+					roomInstance: joined.roomInstance,
+					expiresAt: Math.floor(Date.now() / 1000) + 900,
+				})
+			)
+			.run()
+
+		const body = (await (await matchmake('/matchmake/none', '6011')).json()) as {
+			errorCode: number
+			roomInstance: { roomInstanceId: number; roomId: number } | null
+		}
+		expect(body.errorCode).toBe(0)
+		expect(body.roomInstance).not.toBeNull()
+		// NOT the room they were standing in.
+		expect(body.roomInstance?.roomInstanceId).not.toBe(joined.roomInstance.roomInstanceId)
+		expect(body.roomInstance?.roomId).not.toBe(joined.roomInstance.roomId)
+		// It is their dorm — the same instance `/matchmake/dorm` answers.
+		const dorm = (await (await matchmake('/matchmake/dorm', '6011')).json()) as {
+			roomInstance: { roomInstanceId: number } | null
+		}
+		expect(dorm.roomInstance?.roomInstanceId).toBe(body.roomInstance?.roomInstanceId)
+	})
+
+	// An evader signs in like anyone else (`auth` issues them a token), so they must be able to
+	// finish loading in — otherwise the client hangs on a failed login, which is the failure the
+	// dorm exception exists to fix. They are held to the dorm by the same gate.
+	test('an account caught by ban evasion gets the dorm and nothing else', async () => {
+		const linkTo = async (id: number, platformId: string) =>
+			env.DB.prepare(
+				`INSERT OR IGNORE INTO platform_account (account_id, platform, platform_id, linked_at)
+				 VALUES (?1, 0, ?2, ?3)`
+			)
+				.bind(id, platformId, new Date().toISOString())
+				.run()
+		await linkTo(6009, 'steam-dorm-evader')
+		await banAccount(6009)
+		// The replacement account: different id, same headset.
+		await linkTo(6010, 'steam-dorm-evader')
+
+		const dorm = (await (await matchmake('/matchmake/dorm', '6010')).json()) as {
+			errorCode: number
+			roomInstance: unknown
+		}
+		expect(dorm.errorCode).toBe(0)
+		expect(dorm.roomInstance).not.toBeNull()
+
+		// Every room is still closed to them — which is the ban.
+		expect(await (await matchmake('/matchmake/room/2', '6010')).json()).toEqual(refused(55))
+		expect(await (await matchmake('/matchmake/club/4', '6010')).json()).toEqual(refused(55))
 	})
 
 	// The refusal is the ban's, not the room's: nothing is entered, so no presence is

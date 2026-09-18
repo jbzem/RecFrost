@@ -101,9 +101,33 @@ export const ROOM_SCHEMA_DDL: string[] = [
 		ban_mask INTEGER NOT NULL DEFAULT 0,
 		banned_by_account_id INTEGER NOT NULL,
 		created_at TEXT NOT NULL,
+		-- migrations/0018_room_ban_reason_expiry.sql. NULL expires_at is a permanent ban.
+		reason TEXT,
+		expires_at TEXT,
 		PRIMARY KEY (room_id, banned_player_id)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_room_ban_player ON room_ban (banned_player_id)`,
+	// Room bans that have ENDED (migrations/0019_room_ban_history.sql). `room_ban` above holds
+	// only the ban in force — one row per (room, player), deleted on unban and overwritten on
+	// re-ban — so without this a lifted or lapsed ban leaves no trace. A row is written here
+	// at the moment a ban stops being the live one: when it is lifted (`status` 2, Lifted,
+	// `ended_at` the lift and `unbanned_by_account_id` who lifted it) or when a lapsed ban is
+	// replaced by a new one (`status` 1, Elapsed, `ended_at` its expiry). Append-only.
+	`CREATE TABLE IF NOT EXISTS room_ban_history (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		room_id INTEGER NOT NULL,
+		banned_player_id INTEGER NOT NULL,
+		ban_mask INTEGER NOT NULL DEFAULT 0,
+		banned_by_account_id INTEGER NOT NULL,
+		created_at TEXT NOT NULL,
+		reason TEXT,
+		expires_at TEXT,
+		status INTEGER NOT NULL,
+		ended_at TEXT,
+		unbanned_by_account_id INTEGER
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_room_ban_history_player
+		ON room_ban_history (room_id, banned_player_id)`,
 	// Per-room leaderboard definitions (migrations/0016_room_leaderboard.sql). One row per
 	// (room, leaderboard): `leaderboard_id` is the client's slot number — small ordinals
 	// (1, 2, 3…), unique only within the room — so the pair is the key, and re-posting a
@@ -289,6 +313,10 @@ export interface RoomBan {
 	BanMask: number
 	BannedByAccountId: number
 	CreatedAt: string
+	/** Free text from whoever issued the ban. Null when none was given. */
+	Reason: string | null
+	/** When the ban lapses (ISO-8601 UTC). Null is a permanent ban, lifted only by DELETE. */
+	ExpiresAt: string | null
 }
 
 interface RoomBanRow {
@@ -297,6 +325,8 @@ interface RoomBanRow {
 	ban_mask: number
 	banned_by_account_id: number
 	created_at: string
+	reason: string | null
+	expires_at: string | null
 }
 
 const toRoomBan = (row: RoomBanRow): RoomBan => ({
@@ -305,68 +335,253 @@ const toRoomBan = (row: RoomBanRow): RoomBan => ({
 	BanMask: row.ban_mask,
 	BannedByAccountId: row.banned_by_account_id,
 	CreatedAt: row.created_at,
+	Reason: row.reason,
+	ExpiresAt: row.expires_at,
 })
 
 /**
+ * The SQL that keeps a ban row in force: permanent, or not yet lapsed. An expired row is not
+ * deleted when it lapses — nothing runs at that moment — so EVERY read that asks "is this
+ * player banned" has to apply this, or a 30-minute ban would last forever. the time is bound
+ * rather than using SQLite's clock so it compares in the same ISO-8601 format the rows are
+ * written in (`datetime('now')` has no `T` or `Z` and would sort wrongly against them).
+ * `now` names the placeholder the caller binds the current time to.
+ */
+const banInForce = (now: string): string => `(expires_at IS NULL OR expires_at > ${now})`
+
+/** Where a ban stands, as the client's `Status` enum numbers it. */
+export const RoomBanStatus = {
+	/** In force now. Only ever the `room_ban` row. */
+	Active: 0,
+	/** Ran out on its own. */
+	Elapsed: 1,
+	/** Ended early by someone unbanning the player. */
+	Lifted: 2,
+} as const
+
+/**
+ * One ban in a player's history, whatever state it is in. Timestamps are ISO-8601 as stored.
+ * `EndedAt` is when the ban stopped counting — its expiry if it lapsed, the moment it was
+ * lifted if it was lifted — and for an Active ban the expiry it is scheduled to reach, null
+ * when it is permanent.
+ */
+export interface RoomBanRecord {
+	Status: (typeof RoomBanStatus)[keyof typeof RoomBanStatus]
+	UnbannedByAccountId: number | null
+	EndedAt: string | null
+	Reason: string | null
+	AccountId: number
+	BannedByAccountId: number
+	StartedAt: string
+}
+
+interface RoomBanHistoryRow {
+	banned_player_id: number
+	banned_by_account_id: number
+	created_at: string
+	reason: string | null
+	status: RoomBanRecord['Status']
+	ended_at: string | null
+	unbanned_by_account_id: number | null
+}
+
+/**
+ * A player's ban history in one room: the ban in force, if any, and every ban that has ended,
+ * newest first.
+ *
+ * A `room_ban` row that has LAPSED is not active — but nothing moves it into
+ * `room_ban_history` until the player is banned or unbanned again, so it is reported here as
+ * an Elapsed previous ban rather than dropped. Only the row still in force is `active`.
+ */
+export async function getRoomBanHistory(
+	db: D1Database,
+	roomId: number,
+	playerId: number
+): Promise<{ active: RoomBanRecord | null; previous: RoomBanRecord[] }> {
+	const now = new Date().toISOString()
+	const [current, ended] = await db.batch([
+		db
+			.prepare('SELECT * FROM room_ban WHERE room_id = ?1 AND banned_player_id = ?2')
+			.bind(roomId, playerId),
+		db
+			.prepare(
+				`SELECT * FROM room_ban_history WHERE room_id = ?1 AND banned_player_id = ?2
+				 ORDER BY created_at DESC, id DESC`
+			)
+			.bind(roomId, playerId),
+	])
+
+	const previous = (ended.results as RoomBanHistoryRow[]).map((row): RoomBanRecord => ({
+		Status: row.status,
+		UnbannedByAccountId: row.unbanned_by_account_id,
+		EndedAt: row.ended_at,
+		Reason: row.reason,
+		AccountId: row.banned_player_id,
+		BannedByAccountId: row.banned_by_account_id,
+		StartedAt: row.created_at,
+	}))
+
+	const row = (current.results as RoomBanRow[])[0]
+	if (!row) return { active: null, previous }
+	const inForce = row.expires_at === null || row.expires_at > now
+	const record: RoomBanRecord = {
+		Status: inForce ? RoomBanStatus.Active : RoomBanStatus.Elapsed,
+		UnbannedByAccountId: null,
+		EndedAt: row.expires_at,
+		Reason: row.reason,
+		AccountId: row.banned_player_id,
+		BannedByAccountId: row.banned_by_account_id,
+		StartedAt: row.created_at,
+	}
+	if (inForce) return { active: record, previous }
+	// Newer than anything already filed, since filing it is what a later ban would do.
+	return { active: null, previous: [record, ...previous] }
+}
+
+/** Options for {@link banPlayerFromRoom}. */
+export interface RoomBanOptions {
+	/** Shown to nobody yet; kept on the row. Empty is stored as null. */
+	reason?: string | null
+	/** Minutes until the ban lapses. Absent, null or 0 is permanent. */
+	durationMinutes?: number | null
+}
+
+/**
  * Ban a player from a room, returning the stored ban. One row per (room, player):
- * re-banning someone already banned rewrites their row with the new mask and issuer
- * rather than appending a second one, so the call is idempotent.
+ * re-banning someone already banned rewrites their row with the new mask, issuer, reason and
+ * expiry rather than appending a second one, so the call is idempotent.
+ *
+ * A re-ban REPLACES the duration rather than extending it, and the clock restarts from now:
+ * banning someone for 30 minutes who has 5 left leaves them with 30, and re-banning with no
+ * duration makes the ban permanent. The latest ban issued is the one in force.
+ *
+ * History: if the row being overwritten had already LAPSED, that ban is over and is filed in
+ * `room_ban_history` as Elapsed first. A ban still in force is AMENDED rather than ended — the
+ * player has been banned continuously — so it is overwritten without leaving a history row.
+ * Both statements run as one batch, so the old ban is never lost between them.
  */
 export async function banPlayerFromRoom(
 	db: D1Database,
 	roomId: number,
 	bannedPlayerId: number,
 	banMask: number,
-	bannedByAccountId: number
+	bannedByAccountId: number,
+	options: RoomBanOptions = {}
 ): Promise<RoomBan> {
-	const row = await db
-		.prepare(
-			`INSERT INTO room_ban (room_id, banned_player_id, ban_mask, banned_by_account_id, created_at)
-			 VALUES (?1, ?2, ?3, ?4, ?5)
-			 ON CONFLICT(room_id, banned_player_id) DO UPDATE SET
-				 ban_mask = ?3, banned_by_account_id = ?4, created_at = ?5
-			 RETURNING *`
-		)
-		.bind(roomId, bannedPlayerId, banMask, bannedByAccountId, new Date().toISOString())
-		.first<RoomBanRow>()
+	const now = new Date()
+	const minutes = options.durationMinutes ?? 0
+	const expiresAt = minutes > 0 ? new Date(now.getTime() + minutes * 60_000).toISOString() : null
+	const reason = options.reason?.trim() || null
+
+	const [, upserted] = await db.batch([
+		db
+			.prepare(
+				`INSERT INTO room_ban_history
+					 (room_id, banned_player_id, ban_mask, banned_by_account_id, created_at, reason,
+					  expires_at, status, ended_at, unbanned_by_account_id)
+				 SELECT room_id, banned_player_id, ban_mask, banned_by_account_id, created_at, reason,
+					 expires_at, ?4, expires_at, NULL
+				 FROM room_ban
+				 WHERE room_id = ?1 AND banned_player_id = ?2 AND NOT ${banInForce('?3')}`
+			)
+			.bind(roomId, bannedPlayerId, now.toISOString(), RoomBanStatus.Elapsed),
+		db
+			.prepare(
+				`INSERT INTO room_ban
+					 (room_id, banned_player_id, ban_mask, banned_by_account_id, created_at, reason, expires_at)
+				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+				 ON CONFLICT(room_id, banned_player_id) DO UPDATE SET
+					 ban_mask = ?3, banned_by_account_id = ?4, created_at = ?5, reason = ?6, expires_at = ?7
+				 RETURNING *`
+			)
+			.bind(
+				roomId,
+				bannedPlayerId,
+				banMask,
+				bannedByAccountId,
+				now.toISOString(),
+				reason,
+				expiresAt
+			),
+	])
 	// RETURNING always yields the upserted row.
-	return toRoomBan(row!)
+	return toRoomBan((upserted.results as RoomBanRow[])[0])
 }
 
 /**
  * Lift a player's ban on a room, returning the ban that was removed — or null when
- * they weren't banned, which lets the caller tell a real unban from a no-op.
+ * they weren't banned, which lets the caller tell a real unban from a no-op. A ban that has
+ * already LAPSED counts as not banned; its stale row is deleted all the same.
+ *
+ * History: the removed ban is filed in `room_ban_history` in the same batch as the delete. A
+ * ban still in force is Lifted, ended now, by `unbannedByAccountId`. A lapsed one is Elapsed,
+ * ended at its expiry, by nobody — deleting the stale row is housekeeping, not a lift.
  */
 export async function unbanPlayerFromRoom(
 	db: D1Database,
 	roomId: number,
-	bannedPlayerId: number
+	bannedPlayerId: number,
+	unbannedByAccountId: number
 ): Promise<RoomBan | null> {
-	const row = await db
-		.prepare('DELETE FROM room_ban WHERE room_id = ?1 AND banned_player_id = ?2 RETURNING *')
-		.bind(roomId, bannedPlayerId)
-		.first<RoomBanRow>()
-	return row ? toRoomBan(row) : null
+	const now = new Date().toISOString()
+	const inForce = banInForce('?3')
+	const [, deleted] = await db.batch([
+		db
+			.prepare(
+				`INSERT INTO room_ban_history
+					 (room_id, banned_player_id, ban_mask, banned_by_account_id, created_at, reason,
+					  expires_at, status, ended_at, unbanned_by_account_id)
+				 SELECT room_id, banned_player_id, ban_mask, banned_by_account_id, created_at, reason,
+					 expires_at,
+					 CASE WHEN ${inForce} THEN ?5 ELSE ?6 END,
+					 CASE WHEN ${inForce} THEN ?3 ELSE expires_at END,
+					 CASE WHEN ${inForce} THEN ?4 ELSE NULL END
+				 FROM room_ban WHERE room_id = ?1 AND banned_player_id = ?2`
+			)
+			.bind(
+				roomId,
+				bannedPlayerId,
+				now,
+				unbannedByAccountId,
+				RoomBanStatus.Lifted,
+				RoomBanStatus.Elapsed
+			),
+		db
+			.prepare('DELETE FROM room_ban WHERE room_id = ?1 AND banned_player_id = ?2 RETURNING *')
+			.bind(roomId, bannedPlayerId),
+	])
+	const row = (deleted.results as RoomBanRow[])[0]
+	if (!row) return null
+	const ban = toRoomBan(row)
+	return ban.ExpiresAt !== null && ban.ExpiresAt <= new Date().toISOString() ? null : ban
 }
 
-/** Everyone banned from a room, most recently banned first. */
+/** Everyone CURRENTLY banned from a room, most recently banned first. Lapsed bans are left out. */
 export async function getRoomBans(db: D1Database, roomId: number): Promise<RoomBan[]> {
 	const { results } = await db
-		.prepare('SELECT * FROM room_ban WHERE room_id = ?1 ORDER BY created_at DESC')
-		.bind(roomId)
+		.prepare(
+			`SELECT * FROM room_ban WHERE room_id = ?1 AND ${banInForce('?2')} ORDER BY created_at DESC`
+		)
+		.bind(roomId, new Date().toISOString())
 		.all<RoomBanRow>()
 	return results.map(toRoomBan)
 }
 
-/** Whether a player is banned from a room. */
+/**
+ * Whether a player is banned from a room RIGHT NOW. A timed ban that has lapsed is not a ban.
+ * This is the check `match` refuses matchmakes on, so the expiry has to be applied here.
+ */
 export async function isPlayerBannedFromRoom(
 	db: D1Database,
 	roomId: number,
 	playerId: number
 ): Promise<boolean> {
 	const row = await db
-		.prepare('SELECT 1 AS hit FROM room_ban WHERE room_id = ?1 AND banned_player_id = ?2')
-		.bind(roomId, playerId)
+		.prepare(
+			`SELECT 1 AS hit FROM room_ban
+			 WHERE room_id = ?1 AND banned_player_id = ?2 AND ${banInForce('?3')}`
+		)
+		.bind(roomId, playerId, new Date().toISOString())
 		.first<{ hit: number }>()
 	return row !== null
 }

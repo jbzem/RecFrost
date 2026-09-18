@@ -440,6 +440,39 @@ export const IsBannedPascalEnvelope = z.object({
 	error_id: z.string().nullable().describe('Null. Lowercase, unlike its three siblings'),
 })
 
+/**
+ * One ban in `GET /rooms/{roomId}/bans/history`. Seven keys, in the client's order — derived
+ * members before base ones, so `AccountId` is fifth.
+ */
+export const RoomBanRecordDto = z.object({
+	Status: z.int().describe('0 Active · 1 Elapsed (ran out) · 2 Lifted (unbanned early)'),
+	UnbannedByAccountId: z.int().nullable().describe('Who lifted it; null unless Lifted'),
+	BanEndTime: z
+		.string()
+		.nullable()
+		.describe(
+			'ISO 8601 UTC. Active: scheduled expiry, null when permanent. Elapsed: its expiry. Lifted: when it was lifted'
+		),
+	Reason: z.string().describe('`""` when no reason was given — never null'),
+	AccountId: z.int().describe('The banned player'),
+	BannedByAccountId: z.int().nullable().describe('Who issued the ban'),
+	BanStartTime: z.string().describe('ISO 8601 UTC, when the ban was issued'),
+})
+
+/** `GET /rooms/{roomId}/bans/history` — the PascalCase envelope, `error_id` lowercase. */
+export const RoomBanHistoryEnvelope = z.object({
+	Value: z
+		.object({
+			ActiveBan: RoomBanRecordDto.nullable().describe('The ban in force, or null'),
+			PreviousBans: RoomBanRecordDto.array().describe('Every ban that has ended, newest first'),
+		})
+		.nullable()
+		.describe('Null only when `id` is missing or not a number'),
+	Success: z.boolean(),
+	Error: z.string().nullable(),
+	error_id: z.string().nullable().describe('Null. Lowercase, unlike its three siblings'),
+})
+
 /** The bare JSON string the bulk lookups answer when the id list is over the cap. */
 export const TooManyLookupIds = z
 	.string()
@@ -608,6 +641,16 @@ export const BanRequest = z.object({
 		.string()
 		.optional()
 		.describe('Stored verbatim; meaning unknown — the client sends `0`. Defaults to 0'),
+	reason: z
+		.string()
+		.optional()
+		.describe('Free text, stored on the ban and shown in the kick message'),
+	durationMinutes: z
+		.string()
+		.optional()
+		.describe(
+			'Minutes until the ban lapses. Absent, empty or `0` is permanent; anything that is not a non-negative whole number is refused'
+		),
 })
 
 /** A stored room ban — what `POST /rooms/{roomId}/bans` answers in `value`. */
@@ -617,6 +660,8 @@ export const RoomBanDto = z.object({
 	BanMask: z.int(),
 	BannedByAccountId: z.int().describe('Who issued the ban'),
 	CreatedAt: z.string(),
+	Reason: z.string().nullable().describe('Null when no reason was given'),
+	ExpiresAt: z.string().nullable().describe('ISO 8601 UTC when the ban lapses; null is permanent'),
 })
 
 /**
@@ -628,6 +673,23 @@ export const RoomBanEntryDto = z.object({
 	accountId: z.int().describe('The banned player'),
 	bannedByAccountId: z.int().describe('Who issued the ban'),
 	banStartTime: z.string().describe('ISO 8601 UTC, when the ban was issued'),
+})
+
+/** `DELETE /rooms/{roomId}/bans/bulk` — the players whose bans to lift. */
+export const UnbanBulkRequest = z.object({
+	id: z
+		.union([z.string(), z.array(z.string())])
+		.describe('Account id(s) to unban — repeated `id=` fields, or one comma-separated value'),
+	banMask: z.string().optional().describe('Sent by the client; ignored'),
+})
+
+/** What the bulk unban answers — the ban envelope, with `value` the removed bans. */
+export const RoomBansRemovedEnvelope = z.object({
+	success: z.boolean(),
+	error: z.string().describe('Empty on success'),
+	value: RoomBanDto.array()
+		.nullable()
+		.describe('The bans removed, in request order; null on a rejection'),
 })
 
 /** The envelope the ban write answers — same shape as the room writes, `value` is the ban. */
