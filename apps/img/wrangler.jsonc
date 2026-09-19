@@ -21,14 +21,16 @@
 	// alongside it: uploads posted to `storage` as FileType 3 land under its
 	// `image/` prefix with no extension, and the client asks THIS worker for them
 	// by the bare name — see the extensionless-key branch in src/img.app.ts.
-	"r2_buckets": [
+	// R2 is disabled on this account (free tier), so both are KV namespaces wearing
+	// an R2 face via `withR2OverKv` at the worker entry (see src/img.app.ts).
+	"kv_namespaces": [
 		{
 			"binding": "IMAGES",
-			"bucket_name": "recflare-img"
+			"id": "fc0cc8767f8247f48a8cb0582c07f966"
 		},
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
+			"id": "150d541a67264652afbc25b1e40baee2"
 		}
 	],
 	// Shared `recflare` D1 — the `img` worker owns the `images` metadata table

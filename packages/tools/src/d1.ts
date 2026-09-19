@@ -46,12 +46,11 @@ export function resolveRemote(opts: { local?: boolean; remote?: boolean }): bool
 export async function readRootEnv(key: string): Promise<string | undefined> {
 	if (process.env[key]) return process.env[key]
 	const envPath = path.join(getRepoRoot(), '.env')
-	if (await fs.pathExists(envPath)) {
-		const content = await fs.readFile(envPath, 'utf8')
-		const m = content.match(new RegExp(`^\\s*${key}\\s*=\\s*(.+?)\\s*$`, 'm'))
-		if (m) return m[1].replace(/^["']|["']$/g, '')
-	}
-	return undefined
+	if (!(await fs.pathExists(envPath))) return undefined
+	const content = await fs.readFile(envPath, 'utf8')
+	const m = content.match(new RegExp(`^\\s*${key}\\s*=\\s*(.+?)\\s*$`, 'm'))
+	if (!m) return undefined
+	return m[1].replace(/^["']|["']$/g, '')
 }
 
 /** The deployed D1's real id, from the environment or the gitignored root .env. */
@@ -93,6 +92,27 @@ async function runD1(worker: string, extraArgs: string[], remote: boolean): Prom
 	try {
 		// Via `pnpm exec` so wrangler resolves from the worker's node_modules (it isn't a
 		// dependency of @repo/tools, so it's not on this process's PATH).
+		//
+		// Windows exception: zx's `$` always spawns through a shell (bash), which does
+		// not exist on Windows — and bun offers no fallback — so EVERY spawn fails
+		// there, silently when quieted. Run wrangler's bundled CLI entry directly
+		// with node instead: same code, argv passed straight through CreateProcess
+		// with no shell and no quoting layer for SQL to die in. Failures reject with
+		// wrangler's stderr tail so a broken database call is loud, never a bare exit.
+		if (process.platform === 'win32') {
+			const cli = path.join(workerDir, 'node_modules', 'wrangler', 'wrangler-dist', 'cli.js')
+			const { execFile } = await import('node:child_process')
+			return await new Promise<string>((resolve, reject) => {
+				execFile('node', [cli, ...args], { cwd: workerDir }, (err, stdout, stderr) => {
+					if (err) {
+						// Both streams: wrangler prints failures to either depending on
+						// the failure (API errors go to stdout as formatted text).
+						const detail = `${stderr || ''}\n${stdout || ''}`.trim().slice(-2000)
+						reject(new Error(`wrangler d1 execute failed: ${detail || err.message}`))
+					} else resolve(stdout)
+				})
+			})
+		}
 		const out = await $`pnpm exec wrangler ${args}`.quiet()
 		return out.stdout
 	} finally {

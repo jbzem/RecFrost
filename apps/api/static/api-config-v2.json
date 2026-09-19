@@ -371,7 +371,7 @@
 	},
 	"ShareBaseUrl": "https://www.rec.example.com/{0}",
 	"StorefrontConfig": {
-		"MinPlayerLevelForGifting": 5,
+		"MinPlayerLevelForGifting": 1,
 		"LatestStoreBadgeDateTime": "2020-01-01T00:00:00Z"
 	},
 	"ConfigTable": [

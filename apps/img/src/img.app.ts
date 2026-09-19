@@ -3,7 +3,13 @@ import { Hono } from 'hono'
 import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
-import { withCleanSpec, withNotFound, withOnError, writeContentRange } from '@repo/hono-helpers'
+import {
+	withCleanSpec,
+	withNotFound,
+	withOnError,
+	withR2OverKv,
+	writeContentRange,
+} from '@repo/hono-helpers'
 
 import { imageBytes, json, ServiceStatus } from './openapi'
 
@@ -562,4 +568,6 @@ app.get(
 	}
 )
 
-export default app
+export default {
+	fetch: (req: Request, env: any, ctx: ExecutionContext) => app.fetch(req, withR2OverKv(env), ctx),
+}

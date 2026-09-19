@@ -2,6 +2,8 @@ import { PhotonImage } from '@cf-wasm/photon'
 import { createExecutionContext, env, SELF, waitOnExecutionContext } from 'cloudflare:test'
 import { beforeAll, describe, expect, it } from 'vitest'
 
+import { makeR2 } from '@repo/hono-helpers'
+
 import app from '../../img.app'
 
 import type { Env } from '../../context'
@@ -51,14 +53,14 @@ async function unsignedFetch(url: string): Promise<Response> {
 }
 
 beforeAll(async () => {
-	await env.IMAGES.put(R2_KEY, IMAGE_BYTES, {
+	await makeR2(env.IMAGES).put(R2_KEY, IMAGE_BYTES, {
 		httpMetadata: { contentType: 'image/jpeg' },
 	})
-	await env.CDN_ASSETS.put(`image/${CDN_NAME}`, IMAGE_BYTES, {
+	await makeR2(env.CDN_ASSETS).put(`image/${CDN_NAME}`, IMAGE_BYTES, {
 		httpMetadata: { contentType: 'image/jpeg' },
 	})
 	// Seed R2 with a key that ALSO exists in `static/` to prove static wins.
-	await env.IMAGES.put('3DCharades.jpg', IMAGE_BYTES, {
+	await makeR2(env.IMAGES).put('3DCharades.jpg', IMAGE_BYTES, {
 		httpMetadata: { contentType: 'image/jpeg' },
 	})
 })
@@ -106,7 +108,7 @@ describe('img endpoints', () => {
 	it('does not look for an extensionless key in the image bucket', async () => {
 		// Same bare name seeded into `recflare-img` instead: extensionless keys only
 		// ever resolve against `recflare-cdn`, so this falls through to the default.
-		await env.IMAGES.put('2028-06-02/only-in-img', IMAGE_BYTES)
+		await makeR2(env.IMAGES).put('2028-06-02/only-in-img', IMAGE_BYTES)
 		const res = await SELF.fetch(`${ORIGIN}/2028-06-02/only-in-img`)
 		expect(res.status).toBe(200)
 		const body = new Uint8Array(await res.arrayBuffer())
@@ -117,7 +119,7 @@ describe('img endpoints', () => {
 		// Exercises the transform path against the cdn bucket, not just the stream-through.
 		// Needs a decodable JPEG, so reuse a bundled static asset's bytes.
 		const real = await (await SELF.fetch(`${ORIGIN}/3DCharades.jpg`)).arrayBuffer()
-		await env.CDN_ASSETS.put('image/2028-06-03/real-photo', real, {
+		await makeR2(env.CDN_ASSETS).put('image/2028-06-03/real-photo', real, {
 			httpMetadata: { contentType: 'image/jpeg' },
 		})
 
@@ -192,7 +194,7 @@ describe('img endpoints', () => {
 	// has a range to suppress; the static-asset path is never handed one at all.
 	it('ignores a Range when a transform rebuilds the body', async () => {
 		const real = await (await SELF.fetch(`${ORIGIN}/3DCharades.jpg`)).arrayBuffer()
-		await env.IMAGES.put('ranged-transform.jpg', real, {
+		await makeR2(env.IMAGES).put('ranged-transform.jpg', real, {
 			httpMetadata: { contentType: 'image/jpeg' },
 		})
 
@@ -361,7 +363,7 @@ describe('img endpoints', () => {
 		src.free()
 		// Stored under a `.bin` name with a claimed PNG type, like a custom avatar item's
 		// design; the codec must go by the bytes, not the name.
-		await env.IMAGES.put('avatar-item/2026-08-26/abc-design.bin', pngBytes, {
+		await makeR2(env.IMAGES).put('avatar-item/2026-08-26/abc-design.bin', pngBytes, {
 			httpMetadata: { contentType: 'image/png' },
 		})
 

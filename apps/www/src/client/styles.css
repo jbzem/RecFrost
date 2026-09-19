@@ -1,11 +1,12 @@
 /*
- * RecFlare — a poster for a game that's up right now.
+ * RecFrost — a poster for a game that's up right now.
  *
  * The page's job is to show that real people are playing on this server, then get you
- * into the game or the Discord. So the surface is warm-dark (the room the
- * screenshots are lit against), and the logo orange (#FE7101) is spent only on actions
- * and the brand mark — never as decoration, or it stops reading as "click this". Green
- * means one thing throughout, healthy: the server is up, or the change saved.
+ * into the game or the Discord. So the surface is frost-night (deep ice-navy, the cold
+ * side of the room the screenshots are lit against), and the frost blue (#7CC7FF) is
+ * spent only on actions and the brand mark — never as decoration, or it stops reading
+ * as "click this". Green means one thing throughout, healthy: the server is up, or
+ * the change saved.
  *
  * Type: Archivo for the nameplate, IBM Plex Sans for everything else. There is
  * deliberately no monospace anywhere — this is a game, and mono type made the whole
@@ -14,16 +15,16 @@
 :root {
 	color-scheme: dark light;
 
-	--bg: #14100c;
-	--surface: #1e1813;
-	--surface-hi: #26201a;
-	--line: #33291f;
-	--text: #f5ede1;
-	--muted: #a8927c;
-	--accent: #fe7101;
-	--accent-hover: #ff8c33;
-	/* Dark ink on orange: white on this orange is only ~2.9:1 and fails AA. */
-	--accent-text: #17110a;
+	--bg: #0b1526;
+	--surface: #111d33;
+	--surface-hi: #182740;
+	--line: #26395a;
+	--text: #eaf3fc;
+	--muted: #8fa6c2;
+	--accent: #7cc7ff;
+	--accent-hover: #a5dcff;
+	/* Deep navy ink on frost blue: white on this blue is only ~1.9:1 and fails AA. */
+	--accent-text: #06283f;
 	--live: #35d07f;
 	--error: #ff6b5e;
 	--ok: #35d07f;
@@ -36,16 +37,16 @@
 
 @media (prefers-color-scheme: light) {
 	:root {
-		/* Off-white with just enough warmth to sit under the orange — not a cream wash. */
-		--bg: #f7f5f2;
+		/* Pale ice with just enough blue to sit under the frost accent — not a grey wash. */
+		--bg: #eef4fa;
 		--surface: #ffffff;
-		--surface-hi: #fbf9f6;
-		--line: #e2ddd6;
-		--text: #201a14;
-		--muted: #736656;
-		--accent: #e05f00;
-		--accent-hover: #c65300;
-		--accent-text: #fffaf4;
+		--surface-hi: #f7fbff;
+		--line: #d3e2f0;
+		--text: #0e2238;
+		--muted: #5b748e;
+		--accent: #0277bd;
+		--accent-hover: #015e97;
+		--accent-text: #f2f9ff;
 		--live: #12855a;
 		--error: #c62f22;
 		--ok: #12855a;
@@ -371,6 +372,13 @@ body {
 	opacity: 0.8;
 }
 
+/* Live head-count under the status line — same quiet tone as the quip. */
+.status-count {
+	margin: 0;
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
 /* Status of the actual server, not decoration — see About. Set in plain sentence
    case: uppercase mono made a friendly "we're up" read like a monitoring alert. */
 .status {
@@ -429,6 +437,39 @@ body {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 12px;
+}
+
+/* Anchor for the download-mirror menu: the menu opens under the button. */
+.menu-wrap {
+	position: relative;
+}
+
+.menu {
+	position: absolute;
+	top: calc(100% + 8px);
+	left: 0;
+	min-width: 230px;
+	z-index: 20;
+	background: var(--surface-hi);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: 6px;
+	box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.menu a {
+	display: block;
+	text-decoration: none;
+	color: var(--text);
+	font-weight: 600;
+	font-size: 0.95rem;
+	padding: 10px 14px;
+	border-radius: calc(var(--radius) - 4px);
+}
+
+.menu a:hover {
+	background: var(--surface);
+	color: var(--accent);
 }
 
 /* Discord blurple, so the button is recognisable before the label is read. Fixed

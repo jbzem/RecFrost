@@ -78,6 +78,7 @@ import {
 	withDefaultCors,
 	withNotFound,
 	withOnError,
+	withR2OverKv,
 } from '@repo/hono-helpers'
 import { validateAndGetAccountId, validateAndGetRoles, validateAndGetVersion } from '@repo/jwt'
 
@@ -4168,4 +4169,6 @@ app.get(
 	)
 )
 
-export default app
+export default {
+	fetch: (req: Request, env: any, ctx: ExecutionContext) => app.fetch(req, withR2OverKv(env), ctx),
+}

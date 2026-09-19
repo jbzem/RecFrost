@@ -7,6 +7,7 @@ import {
 	withDefaultCors,
 	withNotFound,
 	withOnError,
+	withR2OverKv,
 	writeContentRange,
 } from '@repo/hono-helpers'
 
@@ -396,4 +397,25 @@ app.get(
 	)
 )
 
-export default app
+// Static fallback: serve the bundled `static/video/` files at their natural path
+// (e.g. `/video/funny.mp4` -> `static/video/funny.mp4`). With `run_worker_first: true`
+// in wrangler.jsonc the Worker sees every request and must fetch from the ASSETS binding
+// itself; without this route the videos 404'd. Scoped to `/video/` on purpose: the
+// configs and tips in `static/` have their own routes (`/config/*`) and must NOT be
+// served at their own paths (see 'assets are not served at their own paths').
+// The specific R2/asset routes above take precedence; this only catches `/video/*`.
+app.get('/video/*', async (c) => {
+	const url = new URL(c.req.url)
+	if (url.pathname.includes('..')) return c.notFound()
+	const res = await c.env.ASSETS.fetch(new Request(new URL(url.pathname, c.req.url), c.req.raw))
+	if (res.ok || res.status === 304) {
+		const headers = new Headers(res.headers)
+		headers.set('cache-control', CACHE_CONTROL)
+		return new Response(res.status === 304 ? null : res.body, { status: res.status, headers })
+	}
+	return c.notFound()
+})
+
+export default {
+	fetch: (req: Request, env: any, ctx: ExecutionContext) => app.fetch(req, withR2OverKv(env), ctx),
+}

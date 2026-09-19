@@ -2,6 +2,8 @@ import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { describe, expect, test } from 'vitest'
 
+import { makeR2 } from '@repo/hono-helpers'
+
 import '../../cdn.app'
 
 import type { Env } from '../../context'
@@ -103,7 +105,7 @@ describe('cdn endpoints', () => {
 	})
 
 	test('GET /sigs/:sigName streams the blob from R2 as octet-stream', async () => {
-		await env.CDN_ASSETS.put('sigs/682c1283', new Uint8Array([1, 2, 3, 4]))
+		await makeR2(env.CDN_ASSETS).put('sigs/682c1283', new Uint8Array([1, 2, 3, 4]))
 		const res = await exports.default.fetch(`${ORIGIN}/sigs/682c1283`)
 		expect(res.status).toBe(200)
 		expect(res.headers.get('content-type')).toBe('application/octet-stream')
@@ -114,7 +116,7 @@ describe('cdn endpoints', () => {
 	// blobs, the configs served through the ASSETS binding, and the bundled tip data.
 	test('every served file carries the 30-day Cache-Control', async () => {
 		const CACHE_CONTROL = `public, max-age=${86400 * 30}`
-		await env.CDN_ASSETS.put('room/2026-02-03/cached', new Uint8Array([1, 2, 3]))
+		await makeR2(env.CDN_ASSETS).put('room/2026-02-03/cached', new Uint8Array([1, 2, 3]))
 
 		for (const path of [
 			'/room/2026-02-03/cached',
@@ -145,7 +147,7 @@ describe('cdn endpoints', () => {
 	})
 
 	test('GET /sigs/:sigName honors a Range request with 206', async () => {
-		await env.CDN_ASSETS.put('sigs/ranged', new Uint8Array([10, 11, 12, 13, 14, 15]))
+		await makeR2(env.CDN_ASSETS).put('sigs/ranged', new Uint8Array([10, 11, 12, 13, 14, 15]))
 		const res = await exports.default.fetch(`${ORIGIN}/sigs/ranged`, {
 			headers: { Range: 'bytes=2-4' },
 		})
@@ -159,7 +161,7 @@ describe('cdn endpoints', () => {
 	// they exercise the same Content-Range math as the closed range above — which read
 	// every range as a suffix range and emitted `bytes NaN-NaN/6` until it was fixed.
 	test('GET /sigs/:sigName honors open-ended and suffix Range requests', async () => {
-		await env.CDN_ASSETS.put('sigs/ranged2', new Uint8Array([10, 11, 12, 13, 14, 15]))
+		await makeR2(env.CDN_ASSETS).put('sigs/ranged2', new Uint8Array([10, 11, 12, 13, 14, 15]))
 		const fetchRange = (range: string) =>
 			exports.default.fetch(`${ORIGIN}/sigs/ranged2`, { headers: { Range: range } })
 
@@ -183,7 +185,7 @@ describe('cdn endpoints', () => {
 	// exactly the inputs that used to fall through to a 200 — every one of them must
 	// still come back 206 with a Content-Range stating what the body actually holds.
 	test('GET /sigs/:sigName never answers a bytes range with a whole-object 200', async () => {
-		await env.CDN_ASSETS.put('sigs/ranged3', new Uint8Array([10, 11, 12, 13, 14, 15]))
+		await makeR2(env.CDN_ASSETS).put('sigs/ranged3', new Uint8Array([10, 11, 12, 13, 14, 15]))
 		const fetchRange = (range: string) =>
 			exports.default.fetch(`${ORIGIN}/sigs/ranged3`, { headers: { Range: range } })
 
@@ -215,7 +217,10 @@ describe('cdn endpoints', () => {
 	})
 
 	test('GET /room/:dataBlob streams the room blob from R2', async () => {
-		await env.CDN_ASSETS.put('room/94tp5zjtwz0gppp8xlv1j9l5b.room', new Uint8Array([9, 8, 7]))
+		await makeR2(env.CDN_ASSETS).put(
+			'room/94tp5zjtwz0gppp8xlv1j9l5b.room',
+			new Uint8Array([9, 8, 7])
+		)
 		const res = await exports.default.fetch(`${ORIGIN}/room/94tp5zjtwz0gppp8xlv1j9l5b.room`)
 		expect(res.status).toBe(200)
 		expect(res.headers.get('content-type')).toBe('application/octet-stream')
@@ -232,7 +237,7 @@ describe('cdn endpoints', () => {
 	// header it can fetch them but not read the result — and the page can't tell that
 	// apart from the blob being gone.
 	test('answers CORS so a browser on another origin can read a blob', async () => {
-		await env.CDN_ASSETS.put('room/2026-08-01/cors-check', new Uint8Array([4, 2]))
+		await makeR2(env.CDN_ASSETS).put('room/2026-08-01/cors-check', new Uint8Array([4, 2]))
 		const res = await exports.default.fetch(`${ORIGIN}/room/2026-08-01/cors-check`, {
 			headers: { origin: 'https://www.example.net' },
 		})
@@ -245,7 +250,7 @@ describe('cdn endpoints', () => {
 		// Date-foldered, `.inv`-suffixed — the name the storage worker generates and the
 		// api worker hands back as the invention's BlobName.
 		const name = '2026-07-12/6f1c0c3e-1b6a-4a52-9f52-0f4a1a6d2f77.inv'
-		await env.CDN_ASSETS.put(`invention/${name}`, new Uint8Array([1, 2, 3]))
+		await makeR2(env.CDN_ASSETS).put(`invention/${name}`, new Uint8Array([1, 2, 3]))
 		const res = await exports.default.fetch(`${ORIGIN}/invention/${name}`)
 		expect(res.status).toBe(200)
 		expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
@@ -259,7 +264,7 @@ describe('cdn endpoints', () => {
 	test('GET /data/:id streams the data blob from R2', async () => {
 		// Date-foldered — the name the storage worker generates for a FileType 2 upload.
 		const name = '2026-08-05/3b9c1f0a-5d2e-4c1b-9a77-2e6f0b4d8c31'
-		await env.CDN_ASSETS.put(`data/${name}`, new Uint8Array([4, 5, 6]))
+		await makeR2(env.CDN_ASSETS).put(`data/${name}`, new Uint8Array([4, 5, 6]))
 		const res = await exports.default.fetch(`${ORIGIN}/data/${name}`)
 		expect(res.status).toBe(200)
 		expect(res.headers.get('content-type')).toBe('application/octet-stream')
@@ -274,7 +279,7 @@ describe('cdn endpoints', () => {
 	test('GET /avatar/:asset streams the custom avatar item assetbundle from R2', async () => {
 		// A bare filename — what a first-party item's `CurrentSaves[].UnityAsset` names.
 		const name = 'anx442dm1a79kp9n4kugkbgd0.assetbundle'
-		await env.CDN_ASSETS.put(`avatar/${name}`, new Uint8Array([7, 8, 9]))
+		await makeR2(env.CDN_ASSETS).put(`avatar/${name}`, new Uint8Array([7, 8, 9]))
 		const res = await exports.default.fetch(`${ORIGIN}/avatar/${name}`)
 		expect(res.status).toBe(200)
 		expect(res.headers.get('content-type')).toBe('application/octet-stream')

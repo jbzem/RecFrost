@@ -133,6 +133,20 @@ wrangler secrets-store secret create <store-id> --name META_APP_SECRET --scopes 
 > with `wrangler secrets-store secret update` — no redeploy needed, the worker reads
 > the secret per request.
 
+The same store holds `DISCORD_PHOTOFEED_WEBHOOK`, the channel webhook URL behind
+the #photo-feed announcer (`apps/api/src/photofeed.ts`): every public ShareCamera
+photo uploaded via `POST /api/images/v4/uploadsaved` is posted to Discord the
+moment it lands. Only the `api` worker binds it. Create it from the channel's
+Integrations → Webhooks → Copy Webhook URL:
+
+```bash
+wrangler secrets-store secret create <store-id> --name DISCORD_PHOTOFEED_WEBHOOK --scopes workers --remote
+```
+
+> ⚠️ This secret must **exist** or `just deploy` fails on the `api` worker, like
+> the two above. Rotate it with `wrangler secrets-store secret update` — no
+> redeploy needed. Unset/dormant (no binding) means uploads work with no posts.
+
 Then apply the schema. `just migrate` will set up the database and populate it with data. This runs non-interactively, so be careful!
 
 ```bash

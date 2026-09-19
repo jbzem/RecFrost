@@ -4,12 +4,16 @@ import memoizeOne from 'memoize-one'
 import { z } from 'zod'
 
 export const getRepoRoot = memoizeOne(() => {
-	const pnpmLock = z
+	// Normalize Windows separators first: `find.up` returns a drive-letter path
+	// (`C:\…`) there, which the POSIX-anchored validation below would reject —
+	// without this no `runx` command runs on Windows at all. `path` here is the
+	// platform module, which accepts forward slashes on every OS.
+	const found = z
 		.string()
 		.trim()
-		.startsWith('/')
-		.endsWith('/pnpm-lock.yaml')
 		.parse(find.up('pnpm-lock.yaml'))
+		.replaceAll('\\', '/')
+	const pnpmLock = z.string().endsWith('/pnpm-lock.yaml').parse(found)
 	return path.dirname(pnpmLock)
 })
 

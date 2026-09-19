@@ -1,7 +1,7 @@
 {
   "FeaturedPlayer": {
-    "Id": 1,
-    "TitleOverride": "",
+    "Id": 2,
+    "TitleOverride": "Owner of RecFrost",
     "UrlOverride": null
   },
   "FeaturedRoomGroup": {
@@ -11,22 +11,36 @@
     ]
   },
   "CurrentAnnouncement": {
-    "Message": "Server powered by RecFlare",
-    "MoreInfoUrl": "https://recflare.net"
+    "Message": "Welcome to RecFrost!",
+    "MoreInfoUrl": "https://www.bypassedpic.workers.dev"
   },
   "InstagramImages": [
     {
-      "ImageName": "test.jpg",
-      "ImageUrl": "https://github.com/djdevin/recflare"
+      "ImageName": "tip.jpg",
+      "ImageUrl": null
     }
   ],
   "Videos": [
     {
-      "BlobName": "something.mp4",
-      "Title": "test",
-      "Description": "test description",
-      "ThumbnailBlobName": "something.jpg",
+      "BlobName": "DancingLarry.mp4",
+      "Title": "dancing larry",
+      "Description": "he got moves",
+      "ThumbnailBlobName": "tip.jpg",
       "SourceUrl": "https://www.youtube.com"
+    },
+    {
+      "BlobName": "yesrico.mp4",
+      "Title": "yes rico kaboom",
+      "Description": "ahhhh help im dying why are you looking at this",
+      "ThumbnailBlobName": "tip.jpg",
+      "SourceUrl": "https://www.tiktok.com/@3facedcitizen/video/7687021913515822358"
+    },
+    {
+      "BlobName": "dancingappbtw.mp4",
+      "Title": "dancing app btw",
+      "Description": "indonesian tech tok brother",
+      "ThumbnailBlobName": "tip.jpg",
+      "SourceUrl": "https://www.google.com"
     }
   ]
 }

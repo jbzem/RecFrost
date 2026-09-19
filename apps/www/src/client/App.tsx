@@ -7,9 +7,9 @@ import { NotificationType } from '../../../notify/src/notification-types'
 import { authFailure, authUnreachable } from '../auth-messages'
 import {
 	DISCORD_INVITE,
-	DOWNLOAD_URL,
 	LICENSE_URL,
-	QUEST_DOWNLOAD_URL,
+	PC_DOWNLOAD_DRIVE,
+	PC_DOWNLOAD_GOFILE,
 	SOURCE_REPO,
 } from '../links'
 // The session token, the worker hostnames and the `call` every request goes through —
@@ -886,7 +886,7 @@ function NavBar({
 	return (
 		<header className="nav">
 			<Link to="/" navigate={navigate} className="brand">
-				RecFlare
+				RecFrost
 			</Link>
 			<nav className="nav-links">
 				<a href={DISCORD_INVITE} target="_blank" rel="noreferrer">
@@ -1020,6 +1020,7 @@ function Stage({
 	navigate: Navigate
 }) {
 	const [idx, setIdx] = useState(0)
+	const [dlOpen, setDlOpen] = useState(false)
 	const count = slides?.length ?? 0
 
 	// A timeout keyed on the current slide rather than one long-lived interval: steering
@@ -1046,12 +1047,45 @@ function Stage({
 					The servers you remember, rebuilt and running — free, open source, and up right now.
 				</p>
 				<div className="stage-actions">
-					<a className="cta" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">
-						Download for PC
-					</a>
-					<a className="cta" href={QUEST_DOWNLOAD_URL} target="_blank" rel="noreferrer">
-						Download for Quest
-					</a>
+					{/* One button, two mirrors: the choice opens under it rather than
+					    navigating straight away, so both hosts stay one click out. */}
+					<div
+						className="menu-wrap"
+						onBlur={(e) => {
+							if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDlOpen(false)
+						}}
+					>
+						<button
+							className="cta"
+							aria-haspopup="menu"
+							aria-expanded={dlOpen}
+							onClick={() => setDlOpen((o) => !o)}
+						>
+							Download for PC
+						</button>
+						{dlOpen && (
+							<div className="menu" role="menu">
+								<a
+									role="menuitem"
+									href={PC_DOWNLOAD_GOFILE}
+									target="_blank"
+									rel="noreferrer"
+									onClick={() => setDlOpen(false)}
+								>
+									Gofile Download
+								</a>
+								<a
+									role="menuitem"
+									href={PC_DOWNLOAD_DRIVE}
+									target="_blank"
+									rel="noreferrer"
+									onClick={() => setDlOpen(false)}
+								>
+									Google Drive Download
+								</a>
+							</div>
+						)}
+					</div>
 					<a className="cta discord" href={DISCORD_INVITE} target="_blank" rel="noreferrer">
 						Join the Discord
 					</a>
@@ -1126,11 +1160,26 @@ function Chevron({ next }: { next?: boolean }) {
 	)
 }
 
-/** What RecFlare is, under the fold, for whoever wants it. */
+/** What RecFrost is, under the fold, for whoever wants it. */
 function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 	// The feed answering is proof the server replied, so the indicator can't claim
 	// the server is up when it isn't.
 	const state = slides !== null ? 'online' : error ? 'down' : 'checking'
+
+	// Live head-count behind /server-status. Best-effort: a failed fetch just leaves
+	// the count off rather than contradicting the indicator above it.
+	const [players, setPlayers] = useState<number | null>(null)
+	useEffect(() => {
+		let live = true
+		call<{ players: number }>('/server-status')
+			.then(({ players }) => {
+				if (live && Number.isFinite(players)) setPlayers(players)
+			})
+			.catch(() => {})
+		return () => {
+			live = false
+		}
+	}, [])
 
 	return (
 		<section className="about">
@@ -1158,7 +1207,12 @@ function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 								: 'Checking…'}
 					</p>
 					{/* Only when it's actually up: when it isn't, people want the status, not the joke. */}
-					{state === 'online' && <p className="status-quip">The cloud never goes down, right?</p>}
+					{state === 'online' && <p className="status-quip">Stay frosty out there.</p>}
+					{state === 'online' && players !== null && (
+						<p className="status-count">
+							{players} {players === 1 ? 'player' : 'players'} online
+						</p>
+					)}
 				</div>
 			</div>
 		</section>

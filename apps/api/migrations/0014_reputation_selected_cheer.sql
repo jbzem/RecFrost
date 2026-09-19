@@ -1,12 +1,14 @@
--- The two profile fields 0013 left off the `reputation` table on the theory that nothing
--- varied them per player. Owned by the `api` worker; generated from src/reputation-db.ts
--- (SCHEMA_DDL) — keep in sync.
+-- No-op preserver. `is_cheerful` and `selected_cheer` were meant to be added here,
+-- but 0013 now creates them inline (folded — fresh databases get the full table from
+-- that file, matching `reputation-db.ts` SCHEMA_DDL), and databases created from the
+-- pre-fold schema already carry both columns — a real ALTER here would fail on them
+-- with "duplicate column name" and halt the whole migration chain. So this file
+-- intentionally changes nothing: it exists only to keep the numbering stable (later
+-- files must NOT be renumbered — developer databases already recorded them) and to
+-- record that this step was considered and reconciled.
 --
--- `selected_cheer` is the cheer a player has PINNED to their profile, written by
--- `POST /api/PlayerCheer/v1/SetSelectedCheer` (form `CheerCategory`), which every reference
--- server stores per player — 0013's "no endpoint sets one" was wrong. `is_cheerful` is the
--- profile flag the client's DTO and `ReputationUpdate` frame both carry, read straight off
--- the record like every reference does; it is a column so it can vary one day without a
--- migration, defaulted true because that is what every reference serves.
-ALTER TABLE reputation ADD COLUMN is_cheerful INTEGER NOT NULL DEFAULT 1;
-ALTER TABLE reputation ADD COLUMN selected_cheer INTEGER NOT NULL DEFAULT 0;
+-- The UPDATE below is the deliberate no-op that keeps the file a valid migration on
+-- every database: it matches zero rows everywhere and alters nothing. Do NOT replace
+-- it with the original ALTER TABLEs.
+
+UPDATE reputation SET account_id = account_id WHERE 0;

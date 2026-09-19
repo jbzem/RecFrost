@@ -8,13 +8,12 @@
  */
 
 /** The community Discord — the join instructions and the build both live there. */
-export const DISCORD_INVITE = 'https://join.recflare.net'
+export const DISCORD_INVITE = 'https://discord.gg/TqeFU4ekPx'
 
-/** Where the stage's "Download for PC" button goes: the client's release listing. */
-export const DOWNLOAD_URL = 'https://github.com/recflare/client/releases'
-
-/** The stage's "Download for Quest" button: the build's listing on the Meta store. */
-export const QUEST_DOWNLOAD_URL = 'https://www.meta.com/s/6lL20Fnhz'
+/** "Download for PC" mirrors: the stage offers both, same build. */
+export const PC_DOWNLOAD_GOFILE = 'https://gofile.io/d/ZC3DH8Ac'
+export const PC_DOWNLOAD_DRIVE =
+	'https://drive.google.com/file/d/16sR6pgWEXkCMQpkOYE_EGVQo3FoCZGJN/view'
 
 /** The public source repo, linked from the homepage and footer. */
 export const SOURCE_REPO = 'https://github.com/orgs/recflare/repositories'

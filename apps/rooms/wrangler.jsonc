@@ -19,13 +19,15 @@
 			"migrations_dir": "migrations"
 		}
 	],
-	// Shared `recflare-cdn` R2 bucket (also bound by the `cdn`/`storage` workers).
+	// Shared `recflare-cdn` store (also bound by the `cdn`/`storage` workers).
 	// Room images/files live here under `room/`; bound so deleting a room removes its
-	// image object. bucket_name is a literal, so nothing is spliced at deploy time.
-	"r2_buckets": [
+	// image object. The id below is the real namespace id, committed.
+	// R2 is disabled on this account (free tier), so this is a KV namespace wearing
+	// an R2 face via `withR2OverKv` at the worker entry (see src/rooms.app.ts).
+	"kv_namespaces": [
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
+			"id": "150d541a67264652afbc25b1e40baee2"
 		}
 	],
 	// Cross-worker binding to the SignalR notifications hub DO (owned/migrated by

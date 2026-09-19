@@ -46,6 +46,7 @@ import {
 	UploadImageRequest,
 	UploadImageResponse,
 } from '../openapi'
+import { announcePhotoFeed } from '../photofeed'
 import { exceedsApiUploadLimit, maxApiUploadBytes } from '../upload-limit'
 
 import type { Context } from 'hono'
@@ -289,6 +290,25 @@ export const imageRoutes = new Hono<App>({ strict: false })
 					: undefined,
 				playerEventId: playerEventId !== undefined && playerEventId > 0 ? playerEventId : null,
 			})
+
+			// #photo-feed: the photo is stored — announce it on Discord the moment it
+			// lands (no polling). Eligibility mirrors the slideshow feed exactly
+			// (ShareCamera + Accessibility 0/1; unset accessibility defaults to 1 in
+			// createImage). Fire-and-forget: the upload already succeeded, and the
+			// announcer swallows its own failures, so this can never 500 a photo.
+			const accessibility = num(meta.accessibility) ?? 1
+			if (
+				savedImageType === SavedImageType.ShareCamera &&
+				(accessibility === 0 || accessibility === 1)
+			) {
+				c.executionCtx.waitUntil(
+					announcePhotoFeed(c.env, {
+						playerId: id,
+						roomId: roomId !== undefined && roomId > 0 ? roomId : null,
+						imageName: name,
+					}).catch(() => {})
+				)
+			}
 
 			return c.json({ ImageName: name })
 		}

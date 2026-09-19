@@ -26,7 +26,8 @@
 	// Worker runs, which would both publish every config a second time at
 	// `/config/<name>.json` and put asset routing in front of the R2 routes below. With
 	// it, the Worker sees every request and the files are reachable only through
-	// `/config/:name`.
+	// `/config/:name` — except `static/video/*`, served at its natural `/video/*` path
+	// by the static fallback in src/cdn.app.ts.
 	"assets": {
 		"binding": "ASSETS",
 		"directory": "./static",
@@ -34,10 +35,12 @@
 	},
 	// CDN binaries (signature blobs + room build data) are stored as R2 objects
 	// and streamed back by key. Keys are prefixed `sigs/` and `room/`.
-	"r2_buckets": [
+	// R2 is disabled on this account (free tier), so this is a KV namespace wearing
+	// an R2 face via `withR2OverKv` at the worker entry (see src/cdn.app.ts).
+	"kv_namespaces": [
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
+			"id": "150d541a67264652afbc25b1e40baee2"
 		}
 	],
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the

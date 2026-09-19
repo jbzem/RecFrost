@@ -10,11 +10,24 @@ export type Env = SharedHonoEnv & {
 	// signed by `auth` verify here.
 	JWT_SECRET: SecretsStoreSecret
 	/**
+	 * Incoming webhook URL for the #photo-feed Discord announcer (photofeed.ts),
+	 * posting the uploader's line plus the bold room line the moment a public photo
+	 * lands. Optional: unbound (or an empty/missing secret) means uploads work
+	 * exactly as before, with no posts. Same store as JWT_SECRET.
+	 */
+	DISCORD_PHOTOFEED_WEBHOOK?: SecretsStoreSecret
+	/**
 	 * Base domain the share-link URL is derived from, e.g. `rec.example.com`.
 	 * Injected at deploy time via `--var DOMAIN`; defaults in `wrangler.jsonc`
 	 * for local dev and tests.
 	 */
 	DOMAIN: string
+	/**
+	 * Raw SUBDOMAINS var JSON (operator subdomain overrides, keyed by default
+	 * subdomain — see `ns`). Injected at deploy time; absent in tests/local,
+	 * where photofeed.ts falls back to the default `img` host.
+	 */
+	SUBDOMAINS?: string
 	/** Maximum accepted size of each API-owned image upload, in bytes. */
 	RECFLARE_MAX_API_UPLOAD_BYTES?: string
 	// Shared rooms database (schema/migrations owned by the `rooms` worker). Used

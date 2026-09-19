@@ -23,8 +23,10 @@
 -- numbers that will have a source one day, so the column is here and turning them on later
 -- is a write rather than a migration.
 --
--- `IsCheerful` and `SelectedCheer` were left off here on the theory that nothing varied
--- them per player; 0014 adds them — `SelectedCheer` is written by `SetSelectedCheer`.
+-- `IsCheerful` and `SelectedCheer` live here (not in a later ALTER) so a fresh
+-- database gets the full table from this file alone: `SelectedCheer` is the cheer
+-- pinned via `SetSelectedCheer` and `IsCheerful` the profile flag the DTO serves.
+-- 0014 is a no-op preserver (see that file) for databases created before this fold.
 
 CREATE TABLE IF NOT EXISTS reputation (
   account_id INTEGER PRIMARY KEY,
@@ -35,7 +37,9 @@ CREATE TABLE IF NOT EXISTS reputation (
   cheer_great_host INTEGER NOT NULL DEFAULT 0,
   cheer_sportsman INTEGER NOT NULL DEFAULT 0,
   subscriber_count INTEGER NOT NULL DEFAULT 0,
-  subscribed_count INTEGER NOT NULL DEFAULT 0
+  subscribed_count INTEGER NOT NULL DEFAULT 0,
+  is_cheerful INTEGER NOT NULL DEFAULT 1,
+  selected_cheer INTEGER NOT NULL DEFAULT 0
   );
 
 -- `created` is the START of the live credit window, not the row's creation time: spending

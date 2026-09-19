@@ -18,20 +18,12 @@
 			"migrations_table": "d1_migrations_api"
 		}
 	],
-	// Image bucket shared with the `img` worker (which serves objects back by key).
-	// Saved-image uploads are written here. The `recflare-cdn` bucket (owned by the
+	// Image store shared with the `img` worker (which serves objects back by key).
+	// Saved-image uploads are written here. The `recflare-cdn` store (owned by the
 	// `cdn` worker, written by `storage`) is bound read-only alongside it, to hash an
 	// invention's uploaded data blob for its `BlobHash`.
-	"r2_buckets": [
-		{
-			"binding": "IMAGES",
-			"bucket_name": "recflare-img"
-		},
-		{
-			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
-		}
-	],
+	// R2 is disabled on this account (free tier), so both are KV namespaces wearing
+	// an R2 face via `withR2OverKv` at the worker entry (see src/api.app.ts).
 	// Per-player settings KV, owned by the `playersettings` worker. Read AND written here,
 	// for the photo-tagging preference (`/api/players/v1/playerPhotoTaggingSetting`), which
 	// is one key in that same bag rather than storage of its own. The "local" id placeholder
@@ -40,6 +32,14 @@
 		{
 			"binding": "RECFLARE_PLAYER_SETTINGS",
 			"id": "local"
+		},
+		{
+			"binding": "IMAGES",
+			"id": "fc0cc8767f8247f48a8cb0582c07f966"
+		},
+		{
+			"binding": "CDN_ASSETS",
+			"id": "150d541a67264652afbc25b1e40baee2"
 		}
 	],
 	// Cross-worker binding to the SignalR notifications hub DO (owned/migrated by
@@ -62,6 +62,11 @@
 			"binding": "JWT_SECRET",
 			"store_id": "local",
 			"secret_name": "JWT_SECRET"
+		},
+		{
+			"binding": "DISCORD_PHOTOFEED_WEBHOOK",
+			"store_id": "local",
+			"secret_name": "DISCORD_PHOTOFEED_WEBHOOK"
 		}
 	],
 	"upload_source_maps": true,

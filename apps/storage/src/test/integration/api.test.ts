@@ -1,6 +1,8 @@
 import { adminSecretsStore, env, SELF } from 'cloudflare:test'
 import { beforeAll, expect, it } from 'vitest'
 
+import { makeR2 } from '@repo/hono-helpers'
+
 import type { Env } from '../../context'
 
 declare module 'cloudflare:test' {
@@ -78,7 +80,7 @@ it('POST /upload stores a RoomMetadata (FileType 6) file under roommetadata/ and
 	)
 
 	// The bytes are persisted in the shared CDN bucket under the type subfolder.
-	const stored = await env.CDN_ASSETS.get(`roommetadata/${filename}`)
+	const stored = await makeR2(env.CDN_ASSETS).get(`roommetadata/${filename}`)
 	expect(stored).not.toBeNull()
 	expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
 })
@@ -99,7 +101,7 @@ it('POST /upload folders each FileType under its own subfolder', async () => {
 		})
 		expect(res.status).toBe(200)
 		const { filename } = (await res.json()) as { filename: string }
-		expect(await env.CDN_ASSETS.get(`${subfolder}/${filename}`)).not.toBeNull()
+		expect(await makeR2(env.CDN_ASSETS).get(`${subfolder}/${filename}`)).not.toBeNull()
 	}
 })
 
@@ -117,7 +119,7 @@ it('POST /upload names an Invention (FileType 5) upload with the .inv extension'
 	const { filename } = (await res.json()) as { filename: string }
 	expect(filename).toMatch(/^\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}\.inv$/)
 
-	const stored = await env.CDN_ASSETS.get(`invention/${filename}`)
+	const stored = await makeR2(env.CDN_ASSETS).get(`invention/${filename}`)
 	expect(stored).not.toBeNull()
 	expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
 })

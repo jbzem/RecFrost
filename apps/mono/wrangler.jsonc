@@ -22,21 +22,21 @@
 		}
 	],
 	// Shared R2 buckets: image storage (api) + binary room-data CDN (cdn/rooms/storage).
-	"r2_buckets": [
-		{
-			"binding": "IMAGES",
-			"bucket_name": "recflare-img"
-		},
-		{
-			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
-		}
-	],
+	// R2 is disabled on this account (free tier), so both are KV namespaces wearing
+	// an R2 face via `withR2OverKv` (each mounted app wraps its own entry).
 	// Per-player settings KV (playersettings). "local" id replaced at deploy.
 	"kv_namespaces": [
 		{
 			"binding": "RECFLARE_PLAYER_SETTINGS",
 			"id": "local"
+		},
+		{
+			"binding": "IMAGES",
+			"id": "fc0cc8767f8247f48a8cb0582c07f966"
+		},
+		{
+			"binding": "CDN_ASSETS",
+			"id": "150d541a67264652afbc25b1e40baee2"
 		}
 	],
 	// Notifications hub. The class ships IN this worker (re-exported from notify), so it

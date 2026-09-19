@@ -14,6 +14,7 @@ import {
 	seedRoomWithSubRooms,
 	SUBROOM_SCHEMA_DDL,
 } from '@repo/domain'
+import { makeR2 } from '@repo/hono-helpers'
 
 import { NotificationType } from '../../../../notify/src/notification-types'
 import importRooms from '../../../static/ImportRooms.json'
@@ -1603,7 +1604,7 @@ describe('rooms endpoints', () => {
 				})
 			)
 			.run()
-		await env.CDN_ASSETS.put(`room/${ImageName}`, new Uint8Array([1, 2, 3]))
+		await makeR2(env.CDN_ASSETS).put(`room/${ImageName}`, new Uint8Array([1, 2, 3]))
 		await env.DB.prepare(
 			'INSERT INTO interaction (player_id, room_id, cheered, favorited) VALUES (7, 9500, 1, 1)'
 		).run()
@@ -1627,7 +1628,7 @@ describe('rooms endpoints', () => {
 		// Owner → Success:true; the room, its interactions, and the CDN image are gone.
 		expect(await bodyOf(await del('1'))).toMatchObject({ Success: true })
 		expect(await roomExists()).toBe(false)
-		expect(await env.CDN_ASSETS.get(`room/${ImageName}`)).toBeNull()
+		expect(await makeR2(env.CDN_ASSETS).get(`room/${ImageName}`)).toBeNull()
 		const interactions = await env.DB.prepare(
 			'SELECT COUNT(*) AS n FROM interaction WHERE room_id = 9500'
 		).first<{ n: number }>()

@@ -7,10 +7,12 @@
 	"routes": [],
 	// Shared CDN R2 bucket (owned by the `cdn` worker). Uploads land here under a
 	// per-FileType subfolder; the `cdn` worker serves them back.
-	"r2_buckets": [
+	// R2 is disabled on this account (free tier), so this is a KV namespace wearing
+	// an R2 face via `withR2OverKv` at the worker entry (see src/storage.app.ts).
+	"kv_namespaces": [
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
+			"id": "150d541a67264652afbc25b1e40baee2"
 		}
 	],
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the

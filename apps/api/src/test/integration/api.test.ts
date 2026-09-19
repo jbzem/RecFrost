@@ -27,6 +27,7 @@ import {
 	SUBROOM_SCHEMA_DDL,
 	SUPPORTED_GAME_VERSIONS,
 } from '@repo/domain'
+import { makeR2 } from '@repo/hono-helpers'
 
 import '../../api.app'
 
@@ -44,6 +45,12 @@ import {
 	getEventResponse,
 } from '../../events-db'
 import { SCHEMA_DDL as INVENTIONS_SCHEMA_DDL } from '../../inventions-db'
+import {
+	announcePhotoFeed,
+	buildPhotoFeedPayload,
+	PHOTOFEED_ANNOUNCE_DELAY_MS,
+	photoImageBase,
+} from '../../photofeed'
 import {
 	banFromReport,
 	createReport,
@@ -3645,7 +3652,7 @@ describe('public endpoints', () => {
 		// so the version carries its hash from the start. No sha256 recorded on this
 		// object — the api worker digests the blob itself in that case.
 		const data = new Uint8Array([1, 2, 3, 4])
-		await env.CDN_ASSETS.put('invention/2026-07-12/lamp.inv', data)
+		await makeR2(env.CDN_ASSETS).put('invention/2026-07-12/lamp.inv', data)
 
 		const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
 			method: 'POST',
@@ -3733,7 +3740,7 @@ describe('public endpoints', () => {
 		// Once the blob is there the hash resolves — here from the checksum recorded at
 		// upload time (what the storage worker puts), not by digesting the body.
 		const data = new Uint8Array([9, 8, 7])
-		await env.CDN_ASSETS.put('invention/2026-07-12/late.inv', data, {
+		await makeR2(env.CDN_ASSETS).put('invention/2026-07-12/late.inv', data, {
 			sha256: await crypto.subtle.digest('SHA-256', data),
 		})
 		const hash = await base64Sha256(data)
@@ -4272,12 +4279,12 @@ describe('custom avatar items', () => {
 		expect(body.Value.CreatedAt).toBe(body.Value.ModifiedAt)
 
 		// Both uploads landed in the image bucket under those keys.
-		const thumb = await env.IMAGES.get(body.Value.ThumbnailImageFilename as string)
+		const thumb = await makeR2(env.IMAGES).get(body.Value.ThumbnailImageFilename as string)
 		expect(new Uint8Array((await thumb!.arrayBuffer()) as ArrayBuffer)).toEqual(
 			new Uint8Array([1, 2, 3])
 		)
 		expect(thumb!.httpMetadata?.contentType).toBe('image/png')
-		const design = await env.IMAGES.get(body.Value.DesignFilename as string)
+		const design = await makeR2(env.IMAGES).get(body.Value.DesignFilename as string)
 		expect(new Uint8Array((await design!.arrayBuffer()) as ArrayBuffer)).toEqual(
 			new Uint8Array([4, 5, 6])
 		)
@@ -4377,13 +4384,13 @@ describe('custom avatar items', () => {
 			Value: { CustomAvatarItemId: string; ThumbnailImageFilename: string; DesignFilename: string }
 		}
 		const { CustomAvatarItemId, ThumbnailImageFilename, DesignFilename } = created.Value
-		expect(await env.IMAGES.get(ThumbnailImageFilename)).not.toBeNull()
+		expect(await makeR2(env.IMAGES).get(ThumbnailImageFilename)).not.toBeNull()
 		const url = `${ORIGIN}/api/customAvatarItems/v1/${CustomAvatarItemId}`
 
 		// Not the creator → 403 and nothing changes.
 		const other = await exports.default.fetch(url, { method: 'DELETE', headers: await bearer('9') })
 		expect(other.status).toBe(403)
-		expect(await env.IMAGES.get(ThumbnailImageFilename)).not.toBeNull()
+		expect(await makeR2(env.IMAGES).get(ThumbnailImageFilename)).not.toBeNull()
 
 		const res = await exports.default.fetch(url, { method: 'DELETE', headers: await bearer('205') })
 		expect(res.status).toBe(200)
@@ -4392,8 +4399,8 @@ describe('custom avatar items', () => {
 			Error: null,
 			Value: { CustomAvatarItemId, Name: 'Gone' },
 		})
-		expect(await env.IMAGES.get(ThumbnailImageFilename)).toBeNull()
-		expect(await env.IMAGES.get(DesignFilename)).toBeNull()
+		expect(await makeR2(env.IMAGES).get(ThumbnailImageFilename)).toBeNull()
+		expect(await makeR2(env.IMAGES).get(DesignFilename)).toBeNull()
 		expect(
 			await env.DB.prepare('SELECT 1 FROM custom_avatar_item WHERE custom_avatar_item_id = ?1')
 				.bind(CustomAvatarItemId)
@@ -4428,7 +4435,8 @@ describe('custom avatar items', () => {
 		const previous = env.RECFLARE_MAX_API_UPLOAD_BYTES
 		env.RECFLARE_MAX_API_UPLOAD_BYTES = '3'
 		try {
-			const objectsBefore = (await env.IMAGES.list({ prefix: 'avatar-item/' })).objects.length
+			const objectsBefore = (await makeR2(env.IMAGES).list({ prefix: 'avatar-item/' })).objects
+				.length
 			const upload = async (thumbnail: Uint8Array, design: Uint8Array) => {
 				const form = new FormData()
 				form.set(
@@ -4463,7 +4471,7 @@ describe('custom avatar items', () => {
 				"SELECT COUNT(*) AS n FROM custom_avatar_item WHERE json_extract(data, '$.Name') = 'bounded'"
 			).first<{ n: number }>()
 			expect(row?.n).toBe(0)
-			expect((await env.IMAGES.list({ prefix: 'avatar-item/' })).objects).toHaveLength(
+			expect((await makeR2(env.IMAGES).list({ prefix: 'avatar-item/' })).objects).toHaveLength(
 				objectsBefore
 			)
 		} finally {
@@ -5749,7 +5757,7 @@ describe('images', () => {
 		)
 
 		// The object is in the shared bucket under that key.
-		const stored = await env.IMAGES.get(ImageName)
+		const stored = await makeR2(env.IMAGES).get(ImageName)
 		expect(stored).not.toBeNull()
 		expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
 
@@ -5828,6 +5836,167 @@ describe('images', () => {
 		expect(await feed('?take=0')).toBe(10)
 		expect(await feed('?take=-5')).toBe(10)
 		expect(await feed('?take=lots')).toBe(10)
+	})
+
+	// #photo-feed: the Discord announcer behind `POST /api/images/v4/uploadsaved`.
+	// The hook fires after the bytes + metadata row are stored, so these drive the
+	// announcer directly with a stub fetch — no real posts leave the test run.
+	test('buildPhotoFeedPayload formats one embed: user line, room line, photo', () => {
+		expect(
+			buildPhotoFeedPayload('Tester', 'RecCenter', 'https://img.rec.example.com/sharecamera/x.png')
+		).toEqual({
+			embeds: [
+				{
+					description: 'Tester uploaded a photo!\n**Photo Taken in Room: RecCenter**',
+					image: { url: 'https://img.rec.example.com/sharecamera/x.png' },
+					color: 0x7cc7ff,
+				},
+			],
+		})
+		// No resolvable room — `PRIVATE ROOM` rather than `null`.
+		expect(
+			buildPhotoFeedPayload('Tester', null, 'https://img.rec.example.com/sharecamera/x.png')
+				.embeds[0].description
+		).toBe('Tester uploaded a photo!\n**Photo Taken in Room: PRIVATE ROOM**')
+	})
+
+	test('photoImageBase applies the img subdomain override, defaulting to img', () => {
+		expect(photoImageBase('rec.example.com')).toBe('https://img.rec.example.com')
+		expect(photoImageBase('rec.example.com', '{"img":"pictures"}')).toBe(
+			'https://pictures.rec.example.com'
+		)
+		// Malformed JSON falls back rather than throwing — this runs behind an upload.
+		expect(photoImageBase('rec.example.com', 'not-json')).toBe('https://img.rec.example.com')
+	})
+
+	test('announcePhotoFeed posts username + room + photo to the webhook', async () => {
+		const calls: Array<{ url: string; body: string }> = []
+		const stubFetch = (async (url: string, init: { body: string }) => {
+			calls.push({ url, body: init.body })
+			return new Response(null, { status: 204 })
+		}) as unknown as typeof fetch
+		// No-op sleep: the replication delay is covered by the ordering test below.
+		const noSleep = async () => {}
+		await announcePhotoFeed(
+			{
+				DB: env.DB,
+				DOMAIN: 'rec.example.com',
+				DISCORD_PHOTOFEED_WEBHOOK: {
+					get: async () => 'https://discord.com/api/webhooks/fake',
+				} as unknown as SecretsStoreSecret,
+			},
+			{ playerId: 42, roomId: 2, imageName: 'sharecamera/2026-09-18/x.png' },
+			stubFetch,
+			noSleep
+		)
+		expect(calls).toHaveLength(1)
+		expect(calls[0].url).toBe('https://discord.com/api/webhooks/fake')
+		expect(JSON.parse(calls[0].body)).toEqual({
+			// Account 42 is seeded as Tester above; room 2 is RecCenter.
+			embeds: [
+				{
+					description: 'Tester uploaded a photo!\n**Photo Taken in Room: RecCenter**',
+					image: { url: 'https://img.rec.example.com/sharecamera/2026-09-18/x.png' },
+					color: 0x7cc7ff,
+				},
+			],
+		})
+	})
+
+	test('announcePhotoFeed falls back for unknown accounts and roomless photos', async () => {
+		const bodies: string[] = []
+		const stubFetch = (async (_url: string, init: { body: string }) => {
+			bodies.push(init.body)
+			return new Response(null, { status: 204 })
+		}) as unknown as typeof fetch
+		const base = {
+			DB: env.DB,
+			DOMAIN: 'rec.example.com',
+			DISCORD_PHOTOFEED_WEBHOOK: {
+				get: async () => 'https://discord.com/api/webhooks/fake',
+			} as unknown as SecretsStoreSecret,
+		}
+		// Same Player<id> fallback the slideshow feed uses.
+		const noSleep = async () => {}
+		await announcePhotoFeed(
+			base,
+			{ playerId: 999999, roomId: 2, imageName: 'a.png' },
+			stubFetch,
+			noSleep
+		)
+		expect(
+			(JSON.parse(bodies[0]) as { embeds: Array<{ description: string }> }).embeds[0].description
+		).toBe('Player999999 uploaded a photo!\n**Photo Taken in Room: RecCenter**')
+		await announcePhotoFeed(
+			base,
+			{ playerId: 42, roomId: null, imageName: 'b.png' },
+			stubFetch,
+			noSleep
+		)
+		expect(
+			(JSON.parse(bodies[1]) as { embeds: Array<{ description: string }> }).embeds[0].description
+		).toBe('Tester uploaded a photo!\n**Photo Taken in Room: PRIVATE ROOM**')
+	})
+
+	// The droplet regression: Discord fetches the embed image within seconds of
+	// the post and caches it forever, while the bytes replicate through KV —
+	// so the post waits out PHOTOFEED_ANNOUNCE_DELAY_MS first, letting the name
+	// lookups run while it waits.
+	test('announcePhotoFeed waits out the replication delay before posting', async () => {
+		const order: string[] = []
+		const stubFetch = (async () => {
+			order.push('post')
+			return new Response(null, { status: 204 })
+		}) as unknown as typeof fetch
+		let waitedMs = -1
+		const stubSleep = async (ms: number) => {
+			waitedMs = ms
+			order.push('sleep')
+		}
+		await announcePhotoFeed(
+			{
+				DB: env.DB,
+				DOMAIN: 'rec.example.com',
+				DISCORD_PHOTOFEED_WEBHOOK: {
+					get: async () => 'https://discord.com/api/webhooks/fake',
+				} as unknown as SecretsStoreSecret,
+			},
+			{ playerId: 42, roomId: 2, imageName: 'a.png' },
+			stubFetch,
+			stubSleep
+		)
+		expect(waitedMs).toBe(PHOTOFEED_ANNOUNCE_DELAY_MS)
+		expect(order).toEqual(['sleep', 'post'])
+	})
+
+	test('announcePhotoFeed stays silent with no binding, no secret, or a dead store', async () => {
+		let calls = 0
+		const stubFetch = (async () => {
+			calls++
+			return new Response(null, { status: 204 })
+		}) as unknown as typeof fetch
+		const photo = { playerId: 42, roomId: 2, imageName: 'a.png' }
+		// No binding at all (uploads without the secret wired — the current test env).
+		await announcePhotoFeed({ DB: env.DB, DOMAIN: 'rec.example.com' }, photo, stubFetch)
+		// Binding present but the secret missing/empty.
+		const empty = {
+			DB: env.DB,
+			DOMAIN: 'rec.example.com',
+			DISCORD_PHOTOFEED_WEBHOOK: { get: async () => '' } as unknown as SecretsStoreSecret,
+		}
+		await announcePhotoFeed(empty, photo, stubFetch)
+		// The store itself throwing (rotated-away store, outage).
+		const dead = {
+			DB: env.DB,
+			DOMAIN: 'rec.example.com',
+			DISCORD_PHOTOFEED_WEBHOOK: {
+				get: async () => {
+					throw new Error('nope')
+				},
+			} as unknown as SecretsStoreSecret,
+		}
+		await announcePhotoFeed(dead, photo, stubFetch)
+		expect(calls).toBe(0)
 	})
 
 	test('GET /api/images/v5/bulk resolves image records by id, in request order', async () => {
@@ -6183,7 +6352,7 @@ describe('images', () => {
 
 	test('DELETE /api/images/v1/deletesaved removes the owner’s image (row + cheers + R2)', async () => {
 		const ImageName = 'sharecamera/2026-07-17/delete-me.jpg'
-		await env.IMAGES.put(ImageName, new Uint8Array([1, 2, 3]))
+		await makeR2(env.IMAGES).put(ImageName, new Uint8Array([1, 2, 3]))
 		await env.DB.prepare('INSERT INTO image (data) VALUES (?1)')
 			.bind(
 				JSON.stringify({
@@ -6230,7 +6399,7 @@ describe('images', () => {
 		// Owner → 200, and the row, its cheers, and the R2 object are all gone.
 		expect((await del(await bearer('42'))).status).toBe(200)
 		expect(await getImageByName(env.DB, ImageName)).toBeNull()
-		expect(await env.IMAGES.get(ImageName)).toBeNull()
+		expect(await makeR2(env.IMAGES).get(ImageName)).toBeNull()
 		const cheers = await env.DB.prepare(
 			'SELECT COUNT(*) AS n FROM image_interaction WHERE saved_image_id = 8100'
 		).first<{ n: number }>()
@@ -6260,7 +6429,7 @@ describe('images', () => {
 		const previous = env.RECFLARE_MAX_API_UPLOAD_BYTES
 		env.RECFLARE_MAX_API_UPLOAD_BYTES = '3'
 		try {
-			const objectsBefore = (await env.IMAGES.list()).objects.length
+			const objectsBefore = (await makeR2(env.IMAGES).list()).objects.length
 			const fd = new FormData()
 			fd.append('image', new File([new Uint8Array(4)], 'large.png', { type: 'image/png' }))
 			const res = await exports.default.fetch(`${ORIGIN}/api/images/v4/uploadsaved`, {
@@ -6270,7 +6439,7 @@ describe('images', () => {
 			})
 			expect(res.status).toBe(413)
 			expect(await res.json()).toEqual({ error: 'image exceeds the 3-byte upload limit' })
-			expect((await env.IMAGES.list()).objects).toHaveLength(objectsBefore)
+			expect((await makeR2(env.IMAGES).list()).objects).toHaveLength(objectsBefore)
 		} finally {
 			env.RECFLARE_MAX_API_UPLOAD_BYTES = previous
 		}
