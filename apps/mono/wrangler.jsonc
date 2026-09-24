@@ -21,15 +21,17 @@
 			"database_id": "local"
 		}
 	],
-	// Shared R2 buckets: image storage (api) + binary room-data CDN (cdn/rooms/storage).
-	"r2_buckets": [
+	// RecFrost fork: R2 is disabled — these bind KV namespaces under the same
+	// names and the entry wraps them with withR2OverKv (see r2-kv.ts). "local"
+	// ids are replaced from RECFLARE_KV at deploy time.
+	"kv_namespaces": [
 		{
 			"binding": "IMAGES",
-			"bucket_name": "recflare-img"
+			"id": "local"
 		},
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
+			"id": "local"
 		}
 	],
 	// Per-player settings KV (playersettings). "local" id replaced at deploy.

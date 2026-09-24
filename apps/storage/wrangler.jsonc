@@ -7,10 +7,13 @@
 	"routes": [],
 	// Shared CDN R2 bucket (owned by the `cdn` worker). Uploads land here under a
 	// per-FileType subfolder; the `cdn` worker serves them back.
-	"r2_buckets": [
+	// RecFrost fork: R2 is disabled — this binds a KV namespace under the same
+	// name and the entry wraps it with withR2OverKv (see r2-kv.ts). "local"
+	// id is replaced from RECFLARE_KV at deploy time.
+	"kv_namespaces": [
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
+			"id": "local"
 		}
 	],
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the

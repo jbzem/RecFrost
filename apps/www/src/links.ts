@@ -35,3 +35,11 @@ export const ISSUES_URL = `${SOURCE_REPO}/issues/new`
  * it to a real, monitored mailbox and the policy adds it as the preferred contact.
  */
 export const PRIVACY_EMAIL: string = 'privacy@recflare.net'
+
+/**
+ * RecFrost PC download mirrors behind the homepage "Download for PC" menu
+ * (App.tsx). TODO(operator): paste the real Gofile/Google Drive URLs — empty
+ * until set, and the buttons go nowhere while they are.
+ */
+export const PC_DOWNLOAD_GOFILE = ''
+export const PC_DOWNLOAD_DRIVE = ''
