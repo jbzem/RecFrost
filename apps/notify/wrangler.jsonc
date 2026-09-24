@@ -1,0 +1,52 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "notify",
+	"main": "src/notify.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	"durable_objects": {
+		"bindings": [{ "name": "RECFLARE_NOTIFICATIONS_HUB", "class_name": "NotificationsHub" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["NotificationsHub"] }],
+	// The shared `recflare` D1 database. Two tables, both owned (and migrated) by the `api`
+	// worker — no `migrations_dir` here; notify only writes rows:
+	//
+	//  - `notification` (apps/api/migrations/0019_notification.sql), the message store behind
+	//    `GET /api/messages/v2/get`: a coach message to ONE player is a durable message and is
+	//    written there before it is pushed.
+	//  - `audit_log` (apps/api/migrations/0024_audit_log.sql), where EVERY `/internal/*` call
+	//    is recorded against the staff account that made it. These endpoints are the
+	//    operator's remote control over every connected client and most of what they do leaves
+	//    no other trace, so the row is the only lasting answer to "who sent that".
+	//
+	// The coach BROADCAST is deliberately not stored as a notification: it reaches everyone
+	// online at once, so persisting it would write a row per player — thousands per
+	// maintenance notice, for something nobody needs to re-read. Its audit row is one row
+	// either way, which is part of why that trail is worth keeping.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local"
+		}
+	],
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	"logpush": false,
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

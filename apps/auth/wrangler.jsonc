@@ -1,0 +1,62 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "auth",
+	"main": "src/auth.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	// Shared `recflare` D1 database (also used by the rooms worker). The `auth` worker
+	// owns the `accounts` table; a dedicated migrations_table keeps its migration
+	// history separate from the rooms worker's migrations on the same database. The
+	// "local" placeholder is replaced with the real id from RECFLARE_D1 (see .env) at
+	// deploy time.
+	//
+	// It also WRITES one table it doesn't own: a sign-in by an account holding the
+	// isDeveloper/isModerator flag is recorded on `audit_log` as a `staff_login`
+	// (apps/api/migrations/0024_audit_log.sql, owned by the `api` worker). That is the row
+	// saying the session every later audited action came from began, and from what IP.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_auth"
+		}
+	],
+	"logpush": false,
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	//
+	// META_APP_SECRET is the Meta (Oculus) app secret, bound only by this worker: Meta
+	// logins are verified by asking Meta to validate the login nonce, which requires
+	// authenticating as the app (see src/meta-nonce.ts). Both secrets must EXIST in the
+	// store or the deploy fails — an operator with no Meta app still has to create
+	// META_APP_SECRET (any placeholder will do); Meta logins then fail with a 500 until
+	// it holds the real value, and nothing else is affected. See DEPLOYING.md.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		},
+		{
+			"binding": "META_APP_SECRET",
+			"store_id": "local",
+			"secret_name": "META_APP_SECRET"
+		}
+	],
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	// The signup caps (MAX_ACCOUNTS_PER_PLATFORM_ID, MAX_ACCOUNTS_PER_IP) are deliberately
+	// NOT set here. They're injected at deploy time from the gitignored .env
+	// (RECFLARE_MAX_ACCOUNTS_*, see .env.example), so tuning them never means editing a
+	// versioned file. Unset — the default — falls back to the DEFAULT_MAX_ACCOUNTS_*
+	// constants in src/auth.app.ts.
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

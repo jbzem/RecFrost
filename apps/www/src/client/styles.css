@@ -1,0 +1,1357 @@
+/*
+ * RecFrost — a poster for a game that's up right now.
+ *
+ * The page's job is to show that real people are playing on this server, then get you
+ * into the game or the Discord. So the surface is frost-night (deep ice-navy, the cold
+ * side of the room the screenshots are lit against), and the frost blue (#7CC7FF) is
+ * spent only on actions and the brand mark — never as decoration, or it stops reading
+ * as "click this". Green means one thing throughout, healthy: the server is up, or
+ * the change saved.
+ *
+ * Type: Archivo for the nameplate, IBM Plex Sans for everything else. There is
+ * deliberately no monospace anywhere — this is a game, and mono type made the whole
+ * page read like a status dashboard.
+ */
+:root {
+	color-scheme: dark light;
+
+	--bg: #0b1526;
+	--surface: #111d33;
+	--surface-hi: #182740;
+	--line: #26395a;
+	--text: #eaf3fc;
+	--muted: #8fa6c2;
+	--accent: #7cc7ff;
+	--accent-hover: #a5dcff;
+	/* Deep navy ink on frost blue: white on this blue is only ~1.9:1 and fails AA. */
+	--accent-text: #06283f;
+	--live: #35d07f;
+	--error: #ff6b5e;
+	--ok: #35d07f;
+
+	--display: Archivo, system-ui, sans-serif;
+	--body: 'IBM Plex Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+
+	--radius: 10px;
+}
+
+@media (prefers-color-scheme: light) {
+	:root {
+		/* Pale ice with just enough blue to sit under the frost accent — not a grey wash. */
+		--bg: #eef4fa;
+		--surface: #ffffff;
+		--surface-hi: #f7fbff;
+		--line: #d3e2f0;
+		--text: #0e2238;
+		--muted: #5b748e;
+		--accent: #0277bd;
+		--accent-hover: #015e97;
+		--accent-text: #f2f9ff;
+		--live: #12855a;
+		--error: #c62f22;
+		--ok: #12855a;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font: 400 16px/1.6 var(--body);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard focus stays visible everywhere, including on the dark surfaces. */
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+	border-radius: 4px;
+}
+
+/* ---- Containers --------------------------------------------------------- */
+
+.shell {
+	max-width: 440px;
+	margin: 0 auto;
+	padding: 40px 20px 80px;
+}
+
+/* The account dashboard: room for the tab rail without stranding the forms. */
+.shell.wide {
+	max-width: 880px;
+}
+
+/* The homepage: the stage above brings its own top space and shares this width. */
+.shell.home {
+	max-width: 1040px;
+	padding-top: 0;
+}
+
+/* ---- Navigation --------------------------------------------------------- */
+
+.nav {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 16px;
+	max-width: 1040px;
+	margin: 0 auto;
+	padding: 20px;
+	border-bottom: 1px solid var(--line);
+}
+
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	font-family: var(--display);
+	font-weight: 800;
+	font-size: 1.2rem;
+	letter-spacing: -0.015em;
+	color: var(--text);
+	text-decoration: none;
+}
+
+.brand::before {
+	content: '';
+	width: 9px;
+	height: 9px;
+	border-radius: 2px;
+	background: var(--accent);
+}
+
+.nav-links {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+}
+
+.nav-links a,
+.linkish {
+	font-family: var(--body);
+	font-size: 0.95rem;
+	color: var(--muted);
+	text-decoration: none;
+}
+
+.linkish {
+	background: none;
+	border: none;
+	padding: 0;
+	cursor: pointer;
+}
+
+.nav-links a:hover,
+.nav-links a.active,
+.linkish:hover {
+	color: var(--text);
+}
+
+/* ---- The stage (hero) --------------------------------------------------- */
+
+/*
+ * Split down the middle: what this is and the way in on the left, a photo somebody
+ * actually took in game on the right. The photo is proof and never the payload — with
+ * no photo the frame holds its space and the left half carries the same words.
+ */
+.stage {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	align-items: center;
+	gap: 48px;
+	max-width: 1040px;
+	margin: 0 auto;
+	padding: 56px 20px 16px;
+}
+
+/* min-width: 0 on both halves, or the split isn't one: a `1fr` track's automatic
+   minimum is its content's min-content width, so a wide child (the slideshow controls,
+   a long unbroken credit) grows its column past 50% and takes the space out of the
+   other one — which is how this last read as 30/70 with the buttons crushed. */
+.stage-show {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+/* Fixed shape, filled by whatever lands: screenshots arrive at any aspect ratio, and a
+   frame that resized per photo would jog the headline beside it on every rotation. The
+   ratio is landscape rather than 4:3 so the photo doesn't tower over the column beside
+   it — equal columns still read unequal when one is half again as tall. */
+.stage-frame {
+	position: relative;
+	aspect-ratio: 3 / 2;
+	overflow: hidden;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface-hi);
+}
+
+.stage-photo {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	animation: photo-in 0.7s ease;
+}
+
+@keyframes photo-in {
+	from {
+		opacity: 0;
+	}
+}
+
+.stage-body {
+	min-width: 0;
+}
+
+/* No width cap here, unlike the headings below: this one shares a row with the photo,
+   and a headline that stops short of its column makes the split read as 30/70. */
+.stage-title {
+	font-family: var(--display);
+	font-weight: 800;
+	font-size: clamp(2rem, 5vw, 3.5rem);
+	line-height: 1;
+	letter-spacing: -0.03em;
+	margin: 0 0 16px;
+	text-wrap: balance;
+}
+
+/* The one accented word in the headline — it carries the whole emphasis, so the markup
+   always wraps exactly one word in <em>. */
+.stage-title em {
+	font-style: normal;
+	color: var(--accent);
+}
+
+.stage-lede {
+	font-size: 1.05rem;
+	color: var(--muted);
+	margin: 0 0 28px;
+}
+
+/* The signup offer under the hero buttons. Deliberately quieter than a CTA — it sits
+   below the downloads without competing with them — but the link itself carries the
+   accent so it reads as the action it is. */
+.stage-alt {
+	font-size: 0.925rem;
+	color: var(--muted);
+	margin: 18px 0 0;
+}
+
+.stage-alt a {
+	color: var(--accent);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.stage-alt a:hover {
+	text-decoration: underline;
+}
+
+/* Credit line and slideshow controls, under the photo rather than on it. */
+.stage-foot {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px 20px;
+	/* Reserved even while the feed is in flight, so nothing shifts when it lands. */
+	min-height: 28px;
+	font-size: 0.8rem;
+	color: var(--muted);
+}
+
+/* Long usernames and room names wrap instead of widening the column. */
+.credit {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* Back / forward, with the position between them. Fixed width whatever the feed
+   length is — see the note on .stage-show for what a per-photo control did here. */
+.steer {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+}
+
+.steer button {
+	display: grid;
+	place-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: transparent;
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		color 0.15s ease,
+		border-color 0.15s ease;
+}
+
+.steer button:hover {
+	color: var(--text);
+	border-color: var(--muted);
+}
+
+/* Tabular figures so the frame doesn't twitch as the index rolls 9 → 10. */
+.count {
+	font-variant-numeric: tabular-nums;
+	padding: 0 6px;
+}
+
+/* ---- What it is (below the stage) --------------------------------------- */
+
+.about {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 32px 48px;
+	align-items: start;
+	padding: 56px 0 8px;
+}
+
+.about-title {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: clamp(1.35rem, 2.6vw, 1.75rem);
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+	margin: 0 0 12px;
+	max-width: 34ch;
+	text-wrap: balance;
+}
+
+.about-lede {
+	font-size: 1.05rem;
+	color: var(--muted);
+	margin: 0;
+	max-width: 56ch;
+}
+
+/* Emphasis in the lede lifts to full text colour — bolder alone barely reads
+   against the muted grey it sits in. */
+.about-lede strong {
+	font-weight: 600;
+	color: var(--text);
+}
+
+.about-side {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 20px;
+}
+
+.about-links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.status-block {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+}
+
+.status-quip {
+	margin: 0;
+	font-size: 0.8rem;
+	font-style: italic;
+	color: var(--muted);
+	opacity: 0.8;
+}
+
+/* Live head-count under the status line — same quiet tone as the quip. */
+.status-count {
+	margin: 0;
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+/* Status of the actual server, not decoration — see About. Set in plain sentence
+   case: uppercase mono made a friendly "we're up" read like a monitoring alert. */
+.status {
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 500;
+	color: var(--muted);
+}
+
+.status .dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--muted);
+	flex: none;
+}
+
+.status.online .dot {
+	background: var(--live);
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--live) 22%, transparent);
+}
+
+.status.online {
+	color: var(--text);
+}
+
+.status.down .dot {
+	background: var(--error);
+}
+
+.cta {
+	display: inline-block;
+	font-family: var(--body);
+	font-weight: 600;
+	font-size: 0.975rem;
+	text-decoration: none;
+	padding: 13px 30px;
+	border-radius: var(--radius);
+	border: 1px solid var(--accent);
+	background: var(--accent);
+	color: var(--accent-text);
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease;
+}
+
+.cta:hover {
+	background: var(--accent-hover);
+	border-color: var(--accent-hover);
+}
+
+.stage-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+/* Anchor for the download-mirror menu: the menu opens under the button. */
+.menu-wrap {
+	position: relative;
+}
+
+.menu {
+	position: absolute;
+	top: calc(100% + 8px);
+	left: 0;
+	min-width: 230px;
+	z-index: 20;
+	background: var(--surface-hi);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: 6px;
+	box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+
+.menu a {
+	display: block;
+	text-decoration: none;
+	color: var(--text);
+	font-weight: 600;
+	font-size: 0.95rem;
+	padding: 10px 14px;
+	border-radius: calc(var(--radius) - 4px);
+}
+
+.menu a:hover {
+	background: var(--surface);
+	color: var(--accent);
+}
+
+/* Discord blurple, so the button is recognisable before the label is read. Fixed
+   colours rather than tokens: it sits on a photo, so it can't follow the theme. */
+.cta.discord {
+	background: #5865f2;
+	border-color: #5865f2;
+	color: #fff;
+}
+
+.cta.discord:hover {
+	background: #4752c4;
+	border-color: #4752c4;
+}
+
+/* Secondary action: same shape, outlined instead of filled. */
+.cta.ghost {
+	background: transparent;
+	border-color: var(--line);
+	color: var(--text);
+}
+
+.cta.ghost:hover {
+	background: var(--surface);
+	border-color: var(--muted);
+}
+
+/* ---- Footer ------------------------------------------------------------- */
+
+.footer {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px 24px;
+	max-width: 1040px;
+	margin: 0 auto;
+	padding: 24px 20px 40px;
+	border-top: 1px solid var(--line);
+	font-size: 0.875rem;
+	color: var(--muted);
+}
+
+.footer nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 20px;
+}
+
+.footer a {
+	color: var(--muted);
+	text-decoration: none;
+}
+
+.footer a:hover {
+	color: var(--text);
+}
+
+/* The licence link sits inside a sentence rather than the link row, so it needs an
+   underline to be findable at all. */
+.footer span a {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+
+.footer span a:hover {
+	text-decoration-color: currentcolor;
+}
+
+/* ---- Cards and the account workspace ------------------------------------ */
+
+h1 {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 1.7rem;
+	letter-spacing: -0.02em;
+	margin: 0 0 24px;
+}
+
+h2 {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 1.05rem;
+	letter-spacing: -0.01em;
+	margin: 0 0 14px;
+}
+
+.card {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: 22px;
+	margin-bottom: 16px;
+}
+
+.workspace {
+	display: grid;
+	grid-template-columns: 190px 1fr;
+	gap: 16px;
+	align-items: start;
+}
+
+.vtabs {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.vtabs button {
+	text-align: left;
+	background: transparent;
+	border: 1px solid transparent;
+	color: var(--muted);
+	padding: 10px 13px;
+	border-radius: 8px;
+	cursor: pointer;
+	font-family: var(--body);
+	font-size: 0.9rem;
+}
+
+.vtabs button:hover {
+	color: var(--text);
+	background: var(--surface);
+}
+
+.vtabs button.active {
+	background: var(--surface);
+	border-color: var(--line);
+	color: var(--text);
+	font-weight: 600;
+}
+
+/* The active section's card carries its own margin; drop it inside the panel. */
+.panel .card {
+	margin-bottom: 0;
+}
+
+.identity .handle {
+	font-size: 0.9rem;
+	color: var(--muted);
+}
+
+/* Sign in / create account, at the top of the auth card. Two of a kind, so they read as
+   one control rather than as two buttons competing with the orange submit below. */
+.tabs {
+	display: flex;
+	gap: 6px;
+	margin-bottom: 20px;
+	padding: 4px;
+	background: var(--bg);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+
+.tabs button {
+	flex: 1;
+	background: transparent;
+	border: none;
+	color: var(--muted);
+	padding: 8px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-family: var(--body);
+	font-size: 0.9rem;
+}
+
+.tabs button:hover {
+	color: var(--text);
+}
+
+.tabs button.active {
+	background: var(--surface-hi);
+	color: var(--text);
+	font-weight: 600;
+}
+
+/* ---- My rooms ----------------------------------------------------------- */
+
+/*
+ * The owner's own room list. Rows rather than a grid of tiles: a room is identified by
+ * its name, and the counts underneath are the reason to look — both read left-to-right,
+ * which a tile would stack into a column of tiny type.
+ */
+.rooms {
+	list-style: none;
+	margin: 18px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.room {
+	padding-top: 12px;
+	border-top: 1px solid var(--line);
+}
+
+/* The first row sits directly under the intro copy, which already separates it. */
+.room:first-child {
+	padding-top: 0;
+	border-top: none;
+}
+
+/* The whole row is the link to the room's page, so the target is the size of the thing
+   you're aiming at rather than the name alone. Padded out to the card edge and pulled
+   back by the same amount, so the hover fill covers the row instead of stopping short. */
+.room-link {
+	display: grid;
+	grid-template-columns: 112px minmax(0, 1fr);
+	gap: 14px;
+	align-items: start;
+	margin: 0 -10px;
+	padding: 10px;
+	border-radius: 8px;
+	color: inherit;
+	text-decoration: none;
+}
+
+.room-link:hover {
+	background: var(--surface-hi);
+}
+
+.room-link:hover .room-name {
+	color: var(--accent);
+}
+
+/* Fixed 3:2 frame — room thumbnails are screenshots and arrive at any ratio, and a
+   per-room height would leave the names in a ragged column. */
+.room-thumb {
+	width: 100%;
+	aspect-ratio: 3 / 2;
+	object-fit: cover;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--surface-hi);
+}
+
+.room-body {
+	min-width: 0;
+}
+
+.room-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Room names have no spaces to break at, so let a long one wrap anywhere rather than
+   widen the row past the panel. */
+.room-name {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 1rem;
+	letter-spacing: -0.01em;
+	overflow-wrap: anywhere;
+}
+
+/* Whether the room is visible to anyone else — the one piece of state an owner can't
+   see anywhere but here. Public gets the same green "healthy" reading as the server
+   status; every other value stays neutral, since Private isn't a fault. */
+.badge {
+	flex: none;
+	font-size: 0.7rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	padding: 2px 8px;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	color: var(--muted);
+}
+
+.badge.live {
+	color: var(--live);
+	border-color: color-mix(in srgb, var(--live) 45%, transparent);
+}
+
+/* Same pill in the accent `.warn` uses, for a control that isn't finished: a beta mark
+   is "worth knowing before you act", like a staged save — not a neutral fact like Private. */
+.badge.beta {
+	color: var(--accent);
+	border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.room-desc {
+	margin: 6px 0 0;
+	font-size: 0.875rem;
+	color: var(--muted);
+	/* Two lines: enough to tell rooms apart, not enough for one to own the list. */
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+
+.room-stats {
+	margin: 8px 0 0;
+	font-size: 0.8rem;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- One room's page ---------------------------------------------------- */
+
+/* The way back out, above the page's own heading. */
+.backlink {
+	margin: 0 0 16px;
+	font-size: 0.9rem;
+}
+
+.backlink a {
+	color: var(--muted);
+	text-decoration: none;
+}
+
+.backlink a:hover {
+	color: var(--text);
+}
+
+/* Wider thumbnail than the list's, and the name beside it rather than under: this is
+   the page about this one room, so the photo can carry some of the weight. */
+.room-hero {
+	display: grid;
+	grid-template-columns: 260px minmax(0, 1fr);
+	gap: 20px;
+	align-items: start;
+}
+
+.room-hero-img {
+	width: 100%;
+	aspect-ratio: 3 / 2;
+	object-fit: cover;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--surface-hi);
+}
+
+/* The picture and the form that replaces it share the narrow column, so the control sits
+   under the thing it changes. The form drops the blob-upload's top margin for the
+   picture's own gap and keeps its border, which is what marks it as a control on a page
+   whose other room fields are read-only. */
+.room-hero-media {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.room-image-upload {
+	margin-top: 0;
+}
+
+.room-hero-name {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 1.5rem;
+	letter-spacing: -0.02em;
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.room-hero-desc {
+	margin: 10px 0 0;
+	overflow-wrap: anywhere;
+}
+
+/* Label/value pairs. A two-column grid rather than a list of "Label: value" lines, so
+   the values line up and the page can be read down one column. */
+.facts {
+	display: grid;
+	grid-template-columns: 150px minmax(0, 1fr);
+	gap: 8px 16px;
+	margin: 0;
+	font-size: 0.9rem;
+}
+
+.facts dt {
+	color: var(--muted);
+}
+
+.facts dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.subrooms {
+	list-style: none;
+	margin: 18px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.subroom {
+	padding-top: 14px;
+	border-top: 1px solid var(--line);
+}
+
+.subroom:first-child {
+	padding-top: 0;
+	border-top: none;
+}
+
+.subroom-name {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 0.975rem;
+	letter-spacing: -0.01em;
+	overflow-wrap: anywhere;
+}
+
+.subroom-meta,
+.subroom-save {
+	margin: 6px 0 0;
+	font-size: 0.825rem;
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
+/* Something the owner probably wants to act on — an unpublished subroom, a staged save
+   nobody can see yet. Not an error: nothing is broken, it just isn't live. */
+.warn {
+	color: var(--accent);
+}
+
+/*
+ * A scene-data blob and the link that downloads it. The KEY is the link, rather than a
+ * "Download" button beside it: the key is the thing an owner came to find (it's what
+ * `CurrentSave.DataBlob` holds, and what a bug report quotes), so making it the target
+ * keeps it readable and clickable without a second control competing for the row.
+ */
+.blob {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 10px;
+	margin-top: 8px;
+	font-size: 0.8rem;
+}
+
+.blob-label {
+	flex: none;
+	color: var(--muted);
+}
+
+/* Blob keys are `<date>/<uuid>` — long, and with only two places a line could break.
+   `anywhere` lets one wrap mid-key instead of pushing the card sideways. */
+.blob-key {
+	color: var(--accent);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+
+.blob-key:hover {
+	text-decoration: underline;
+}
+
+.blob-note {
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
+/*
+ * Replacing a subroom's scene data. Boxed off from the download links above it: those
+ * only read the room, this one overwrites what players load, and the two shouldn't read
+ * as one row of blob controls.
+ */
+.blob-upload {
+	margin-top: 12px;
+	padding: 12px 14px;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+}
+
+.blob-upload label {
+	margin-bottom: 10px;
+	font-size: 0.8rem;
+}
+
+.blob-upload-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 4px;
+}
+
+.blob-upload-title {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 0.9rem;
+}
+
+/* Tighter than the shared `.muted` paragraph: it's a caveat under a heading, not body
+   copy, and the file picker should still be the first thing the eye lands on. */
+.blob-upload-caveat {
+	margin: 0 0 10px;
+	font-size: 0.8rem;
+}
+
+/* The file picker draws its own button, so the shared input chrome would frame it a
+   second time. Padding stays, so the row lines up with the text field under it. */
+.blob-upload input[type='file'] {
+	border: none;
+	background: none;
+	padding: 8px 0 0;
+	font-size: 0.8rem;
+}
+
+/* A checkbox is not a text field: the shared `input` rule would stretch it to the card's
+   full width and break it onto its own line, away from the words it labels. */
+.check {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.check input[type='checkbox'] {
+	display: inline-block;
+	width: auto;
+	margin: 0;
+	accent-color: var(--accent);
+}
+
+/* Smaller than the account forms' submit — this one sits inside a subroom row, not at
+   the foot of its own card. */
+.blob-upload button[type='submit'] {
+	padding: 8px 14px;
+	font-size: 0.85rem;
+}
+
+/* ---- Forms -------------------------------------------------------------- */
+
+label {
+	display: block;
+	margin-bottom: 14px;
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+input,
+select,
+textarea {
+	display: block;
+	width: 100%;
+	margin-top: 6px;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 0.95rem;
+	font-family: inherit;
+}
+
+textarea {
+	resize: vertical;
+	min-height: 76px;
+}
+
+/* Marks a field the form will submit without. Quiet, but next to the label rather than
+   inside the input, so it survives the field being filled in. */
+.optional {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--muted);
+	opacity: 0.7;
+	margin-left: 4px;
+}
+
+/* Why a field is worth filling in, under the input it belongs to. Sits inside the label,
+   so it's read out with the field rather than as loose text after it. */
+.hint {
+	display: block;
+	margin-top: 6px;
+	font-size: 0.8rem;
+	line-height: 1.45;
+	color: var(--muted);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 2px solid var(--accent);
+	outline-offset: 0;
+	border-color: transparent;
+}
+
+/* Where the Turnstile iframe mounts. It brings its own chrome, so this only reserves the
+   space (the widget is 300×65 at normal size) — otherwise the submit button jumps down
+   the moment the check finishes loading. */
+.turnstile {
+	min-height: 65px;
+	margin-bottom: 14px;
+}
+
+button[type='submit'] {
+	border: none;
+	border-radius: 8px;
+	padding: 11px 18px;
+	font-family: var(--body);
+	font-size: 0.95rem;
+	font-weight: 600;
+	cursor: pointer;
+	background: var(--accent);
+	color: var(--accent-text);
+	/* Hugs its label: a full-width orange bar for "save email" outshouts the hero. */
+	width: auto;
+}
+
+button[type='submit']:not(:disabled):hover {
+	background: var(--accent-hover);
+}
+
+button[type='submit']:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+
+/* The cross-link under an auth form ("Don't have an account? Create one"). Sits under
+   the submit button, which hugs its label, so it needs its own separation from it. */
+.swap {
+	margin: 16px 0 0;
+}
+
+.swap a {
+	color: var(--accent);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.swap a:hover {
+	text-decoration: underline;
+}
+
+/* ---- Utilities ---------------------------------------------------------- */
+
+.big {
+	font-family: var(--display);
+	font-size: 1.2rem;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	margin: 3px 0;
+}
+
+.muted {
+	color: var(--muted);
+	font-size: 0.875rem;
+}
+
+.error,
+.ok {
+	font-size: 0.875rem;
+	margin: 0 0 12px;
+}
+
+.error {
+	color: var(--error);
+}
+
+.ok {
+	color: var(--ok);
+}
+
+/* ---- Responsive --------------------------------------------------------- */
+
+@media (max-width: 860px) {
+	/* One column: the words lead, the photo follows. */
+	.stage {
+		grid-template-columns: 1fr;
+		gap: 32px;
+		padding: 40px 20px 8px;
+	}
+}
+
+@media (max-width: 760px) {
+	/* One column: the copy first, then the links and the status under it. */
+	.about {
+		grid-template-columns: 1fr;
+		gap: 26px;
+		padding-top: 40px;
+	}
+}
+
+@media (max-width: 620px) {
+	.stage-actions .cta {
+		flex: 1 1 auto;
+		text-align: center;
+	}
+
+	.about-links .cta {
+		flex: 1 1 auto;
+		text-align: center;
+	}
+
+	.workspace {
+		grid-template-columns: 1fr;
+	}
+
+	.vtabs {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.vtabs button {
+		border-color: var(--line);
+	}
+
+	/* The room page's hero and its fact table both stack: 260px of photo (or 150px of
+	   label) beside a value leaves the value in a column too narrow to read. */
+	.room-hero {
+		grid-template-columns: 1fr;
+	}
+
+	.facts {
+		grid-template-columns: 1fr;
+		gap: 2px 0;
+	}
+
+	.facts dd {
+		margin-bottom: 10px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/* ---- Moderation panel --------------------------------------------------- */
+/*
+ * The staff surface at /moderation (see Moderation.tsx). Deliberately plainer than the
+ * rest of the site: this is a working tool read for minutes at a time, so it trades the
+ * poster's generous spacing for density, and spends no orange except on the actions it
+ * shares with every other form. Nothing here is warmer than the tables it holds.
+ */
+
+/* The panel needs the width — six or seven columns don't fit the 880px the account
+   dashboard is sized for, and a moderator is at a desk. */
+.shell.mod {
+	max-width: 1180px;
+}
+
+/* A row of filter controls that wraps instead of stacking: each one is short, and
+   stacked they push the results below the fold. */
+.mod-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 16px;
+	align-items: flex-end;
+	margin-bottom: 18px;
+	padding-bottom: 18px;
+	border-bottom: 1px solid var(--line);
+}
+
+.mod-filters label {
+	margin-bottom: 0;
+	min-width: 150px;
+	flex: 1 1 150px;
+}
+
+.mod-filter-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.mod-filter-actions button {
+	margin: 0;
+	width: auto;
+}
+
+/* Tables are the one thing allowed to be wider than the page — a report row has more in
+   it than a phone is wide, and wrapping the cells would make it unscannable. */
+.mod-scroll {
+	overflow-x: auto;
+	margin: 0 -22px;
+	padding: 0 22px;
+}
+
+.mod-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.875rem;
+	white-space: nowrap;
+}
+
+.mod-table th {
+	text-align: left;
+	font-size: 0.75rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--muted);
+	padding: 0 12px 8px 0;
+	border-bottom: 1px solid var(--line);
+}
+
+.mod-table td {
+	padding: 10px 12px 10px 0;
+	border-bottom: 1px solid var(--line);
+	vertical-align: top;
+}
+
+.mod-table tr:last-child td {
+	border-bottom: none;
+}
+
+.mod-table button.linkish {
+	font-size: 0.875rem;
+}
+
+/* A name and the id under it. The id is always shown: rows carry ids, names are a
+   lookup on top, and a moderator acting on the wrong account is the failure to avoid. */
+.mod-player {
+	white-space: nowrap;
+}
+
+/* The reporter's own words — the one cell allowed to wrap, clamped to a sensible width
+   so a long description doesn't push the actions off the table. Full text in the title. */
+.mod-details {
+	white-space: normal;
+	max-width: 320px;
+	min-width: 180px;
+	color: var(--muted);
+}
+
+/* Red, unlike every other badge: a ban is the one state on these tables that someone
+   needs to notice without reading. */
+.badge.mod-banned {
+	color: var(--error);
+	border-color: color-mix(in srgb, var(--error) 45%, transparent);
+	margin-left: 8px;
+}
+
+.mod-pager {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin-top: 16px;
+}
+
+.mod-pager button {
+	margin: 0;
+	width: auto;
+}
+
+/* The evasion preview. A list rather than a table: each line is one account and one
+   reason, and it is read to decide whether to go ahead, not compared column by column. */
+.mod-linked {
+	list-style: none;
+	margin: 0 0 12px;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	font-size: 0.9rem;
+}
+
+/* The ban form, pinned under the tables rather than floating over them: it carries the
+   evasion preview, which can run to several lines, and a modal that scrolls is worse
+   than a panel that is simply below. The accent border is what marks it as the thing
+   waiting on you. */
+.mod-dialog {
+	border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.mod-dialog .card {
+	background: var(--surface-hi);
+}
+
+@media (max-width: 760px) {
+	.mod-filters label {
+		flex-basis: 100%;
+	}
+}

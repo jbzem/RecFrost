@@ -1,0 +1,24 @@
+-- Reporting a CHAT MESSAGE (`POST /api/chatreport/createChatReport`) reuses the report
+-- table, as the event, invention and custom-avatar-item reports before it do: same fields,
+-- same moderation life — a moderator acting on one sets `banned` on the row exactly as they
+-- would for a player report. Generated from src/reports-db.ts (SCHEMA_DDL) — keep in sync.
+--
+-- `chat_message_id` names the reported message; NULL on every other kind of report. It
+-- joins `event_id`, `invention_id` and `custom_avatar_item_id`, and all four are mutually
+-- exclusive: a row names one of those things or none of them (an ordinary player report),
+-- which is what tells the kinds apart.
+--
+-- The message id is the WHOLE reference. The client also posts the `ChatThreadId`, which is
+-- not stored: `message.chat_message_id` is unique across every thread (see the `chat`
+-- worker's 0001_message.sql), so the thread is one lookup away and a stored copy could only
+-- ever disagree with it.
+--
+-- The row's `reported_player_id` is the message's SENDER (`message.sender_player_id`), read
+-- from the message rather than sent by the client — the body names no player at all, and
+-- the column is NOT NULL. No `room_id`: a chat thread is not in a room.
+--
+-- NOT indexed, for the reason 0016 and 0017 give: it is written on every report of this kind
+-- and read by nothing. Every moderation read goes by player (`idx_report_reported`) or by
+-- the ban flag. Add an index with the query that needs it.
+
+ALTER TABLE report ADD COLUMN chat_message_id INTEGER;

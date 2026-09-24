@@ -1,0 +1,63 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "econ",
+	"main": "src/econ.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	// Storefront catalogs served dynamically by id: `/api/storefronts/v3/giftdropstore/:id`
+	// fetches `sf{id}.json` from this directory via the ASSETS binding. Drop a new
+	// `sfN.json` in `static/storefronts` to add a storefront — no code change needed.
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./static/storefronts"
+	},
+	// Shared `recflare` D1. Econ reads/writes the player's avatar column on the accounts
+	// table (whose schema/migrations the `auth` worker owns) and owns the `balance` table
+	// itself — hence its own migrations_dir, with a dedicated migrations_table so its
+	// history doesn't clash with the auth/rooms migrations on the same database. Apply
+	// with `wrangler d1 migrations apply recflare --remote`. The "local" placeholder is
+	// replaced with the real id from RECFLARE_D1 at deploy time.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_econ"
+		}
+	],
+	"logpush": false,
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	// The `notify` worker's NotificationsHub DO — used to push websocket notifications
+	// to a player (e.g. ConsumableMappingRemoved when a consumable is consumed).
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	// The signup token grant (STARTING_TOKENS) is deliberately NOT set here. It's injected
+	// at deploy time from the gitignored .env (RECFLARE_STARTING_TOKENS, see .env.example),
+	// so tuning it never means editing a versioned file. Unset — the default — falls back
+	// to DEFAULT_STARTING_TOKENS in src/balance-db.ts.
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

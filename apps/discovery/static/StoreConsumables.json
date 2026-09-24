@@ -1,0 +1,9 @@
+[
+	{
+		"Id": "store-consumables-all",
+		"SectionType": 4,
+		"Source": "UnifiedAlgorithmicList",
+		"SourceMetadata": "consumableitems",
+		"DisplayMetadata": "{\"DisplayTitle\":\"Consumables\",\"numRows\":2,\"itemCount\":20,\"minItemsToShowSection\":1,\"horizontalScrollEnabled\":true}"
+	}
+]

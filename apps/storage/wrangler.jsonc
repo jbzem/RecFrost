@@ -1,0 +1,34 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "storage",
+	"main": "src/storage.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	"routes": [],
+	// Shared CDN R2 bucket (owned by the `cdn` worker). Uploads land here under a
+	// per-FileType subfolder; the `cdn` worker serves them back.
+	"r2_buckets": [
+		{
+			"binding": "CDN_ASSETS",
+			"bucket_name": "recflare-cdn"
+		}
+	],
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

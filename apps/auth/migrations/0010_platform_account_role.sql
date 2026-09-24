@@ -1,0 +1,37 @@
+-- Record the roles a linked identity held in its platform's community, for the one
+-- platform that has any: `PlatformType.Discord` (101), written by the website's benefits
+-- claim from the member record Discord itself served
+-- (`GET /users/@me/guilds/{guild}/member`). Steam and Meta links leave it NULL — there is
+-- no such thing there — so the column is nullable and has no default.
+--
+-- Until now the claim asked Discord for the member's roles, tested them against the
+-- configured qualifying list, and threw the answer away; all that survived was `hasPlus`,
+-- which records "held A qualifying role once" and not WHICH one. That is the question an
+-- operator has to answer by hand in Discord for every player who writes in — and the only
+-- way to tell a supporter from a booster from staff after the fact, or to see that a tier
+-- was granted under a role that has since been retired.
+--
+-- A JSON ARRAY of role id snowflakes (`["1077…001","1077…002"]`), not one id: a member
+-- holds as many roles as they hold, and the claim qualifies on ANY of them, so storing a
+-- single one would have to pick arbitrarily. Snowflakes stay STRINGS — one exceeds 2^53,
+-- so a JSON number would round and stop matching the real role. The list is the whole
+-- member record's roles, not just the qualifying ones: it is a snapshot of who they were
+-- in the guild, and filtering it to the config of the day would make it unreadable the
+-- moment the config changed.
+--
+-- It is a SNAPSHOT, taken at claim time and refreshed only when the same player claims
+-- again. Nothing sweeps it: reading a member's roles needs that member's own OAuth token
+-- (this design deliberately holds no bot token — see apps/www/src/discord.ts), so the
+-- server cannot re-read them unprompted. Read it as "the roles they held when they
+-- claimed", the same tense `hasPlus` carries, and never as "the roles they hold".
+--
+-- No index. Nothing queries BY role yet; when something does, it will want
+-- `json_each(role)` and an expression index built for that query, not a plain one over
+-- the array text, which could only serve an exact-whole-array match. Kept in sync with
+-- PLATFORM_SCHEMA_DDL in src/platform-db.ts.
+--
+-- Safe to run before or after the deploy that ships it: an added nullable column is
+-- invisible to the currently-deployed code, which names its columns explicitly and never
+-- SELECTs *.
+
+ALTER TABLE platform_account ADD COLUMN role TEXT;

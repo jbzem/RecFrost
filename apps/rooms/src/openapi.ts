@@ -1,0 +1,1034 @@
+import { resolver } from 'hono-openapi'
+import { z } from 'zod'
+
+import type { OpenAPIV3_1 } from 'openapi-types'
+
+/**
+ * OpenAPI schemas for the rooms worker.
+ *
+ * IMPORTANT: these are DESCRIPTIVE ONLY. They are passed to `describeRoute` to
+ * generate the spec and are never wired into `hono-openapi`'s `validator()`. Same
+ * rationale as the auth/accounts/match/econ/clubs workers: a reverse-engineered
+ * protocol, lenient handlers, no runtime validation.
+ *
+ * Do NOT add `.meta({ id })` to these schemas — with this hono-openapi + zod v4 setup a
+ * meta'd schema used in a response emits a `$ref` the framework doesn't always hoist
+ * into `components.schemas`, leaving a dangling reference. Leaving meta off makes every
+ * schema inline, which renders correctly in any tool.
+ */
+
+/** Emit a zod schema as an `application/json` response body. */
+export function json(schema: z.ZodType, description: string) {
+	return { description, content: { 'application/json': { schema: resolver(schema) } } }
+}
+
+function toOpenApiSchema(schema: z.ZodType): OpenAPIV3_1.SchemaObject {
+	const { $schema: _$schema, additionalProperties: _extra, ...jsonSchema } = z.toJSONSchema(schema)
+	return jsonSchema as OpenAPIV3_1.SchemaObject
+}
+
+/** A form-urlencoded / multipart request body (the client posts both). */
+export function form(schema: z.ZodType, description: string): OpenAPIV3_1.RequestBodyObject {
+	const s = toOpenApiSchema(schema)
+	return {
+		description,
+		content: {
+			'application/x-www-form-urlencoded': { schema: s },
+			'multipart/form-data': { schema: s },
+		},
+	}
+}
+
+/** An `application/json` request body. */
+export function jsonBody(schema: z.ZodType, description: string): OpenAPIV3_1.RequestBodyObject {
+	return { description, content: { 'application/json': { schema: toOpenApiSchema(schema) } } }
+}
+
+/** Bearer-JWT security requirement, for the auth-gated routes. */
+export const AUTHED = [{ bearerAuth: [] }]
+
+/**
+ * The 401 the auth-gated routes return. Most answer `{ error: 'Unauthorized' }`; the
+ * subroom writes answer an empty body (see UNAUTHORIZED_EMPTY / UNAUTHORIZED_ENVELOPE).
+ */
+export const UNAUTHORIZED_RESPONSE = json(
+	z.object({ error: z.literal('Unauthorized') }),
+	'Missing or invalid bearer token'
+)
+
+/** The empty-body 401 the subroom-save route returns. */
+export const UNAUTHORIZED_EMPTY = { description: 'Missing or invalid bearer token (empty body)' }
+
+/** The 403 the owner/co-owner-gated routes return (empty body). */
+export const FORBIDDEN_RESPONSE = {
+	description: 'A valid token, but not the room’s creator or a co-owner (empty body)',
+}
+
+/** The 403 the friends-only routes return (empty body). */
+export const NOT_FRIENDS_RESPONSE = {
+	description:
+		'A valid token, but the caller is not that player (nor a friend of theirs) (empty body)',
+}
+
+// ---- Parameters ------------------------------------------------------------
+
+/** A digits-only id path parameter (the route patterns constrain these to `[0-9]+`). */
+function idParam(name: string, description: string): OpenAPIV3_1.ParameterObject {
+	return {
+		name,
+		in: 'path',
+		required: true,
+		description,
+		schema: { type: 'string', pattern: '^[0-9]+$' },
+	}
+}
+
+/** The `:roomId` path parameter. */
+export const roomIdParam = idParam('roomId', 'Room id')
+
+/** The `:subRoomId` path parameter. */
+export const subRoomIdParam = idParam('subRoomId', 'Subroom id (globally unique, not per-room)')
+
+/** The `:saveId` path parameter — a `subroom_save` id (globally unique, not per-subroom). */
+export const saveIdParam = idParam('saveId', 'The save’s id, as `…/saves` lists it')
+
+/** The `:playerId` path parameter (an account id). */
+export const playerIdParam = idParam('playerId', 'The account whose list to read')
+
+/** The `:playerId` path parameter on the unban route. */
+export const bannedPlayerIdParam = idParam('playerId', 'The banned account to unban')
+
+/** The `:leaderboardId` path parameter on the room leaderboard routes. */
+export const leaderboardIdParam = idParam(
+	'leaderboardId',
+	'The leaderboard slot within the room — small ordinals (1, 2, 3…), unique per room only'
+)
+
+/** An optional string query parameter. */
+export function stringQuery(name: string, description: string): OpenAPIV3_1.ParameterObject {
+	return { name, in: 'query', required: false, description, schema: { type: 'string' } }
+}
+
+/** An optional integer query parameter. */
+export function intQuery(name: string, description: string): OpenAPIV3_1.ParameterObject {
+	return { name, in: 'query', required: false, description, schema: { type: 'integer' } }
+}
+
+/** The `skip`/`take` pair every paginated room list accepts. */
+export function pageParams(defaultTake: number): OpenAPIV3_1.ParameterObject[] {
+	return [
+		intQuery('skip', 'How many rooms to skip (default 0)'),
+		intQuery('take', `How many rooms to return (default ${defaultTake})`),
+	]
+}
+
+// ---- Core entities ---------------------------------------------------------
+
+/** `GET /` — the liveness probe body. */
+export const ServiceStatus = z.object({
+	service: z.literal('rooms'),
+	status: z.literal('ok'),
+})
+
+/** A room-role assignment. `Role`: 10 Host, 20 Moderator, 30 CoOwner, 255 Creator. */
+export const RoomRoleDto = z.object({
+	AccountId: z.int(),
+	Role: z.int().describe('10 = Host, 20 = Moderator, 30 = CoOwner, 255 = Creator'),
+	LastChangedByAccountId: z.int().nullable(),
+	InvitedRole: z.int(),
+})
+
+/**
+ * A tag on a room. `Type` 0 = set by the owner, 2 = auto-derived (e.g. `rro`).
+ *
+ * `IsPrimaryGenre` marks the one tag that is the room's genre, and is PRESENT ONLY on
+ * that tag — the key is absent on the others rather than sent as false. It is orthogonal
+ * to `Type`: the flagged tag is an ordinary owner-set tag that happens to be the genre.
+ */
+export const RoomTagDto = z.object({
+	Tag: z.string(),
+	Type: z.int().describe('0 = owner-set, 1 = client-derived (`autoTag`), 2 = server-derived'),
+	IsPrimaryGenre: z
+		.literal(true)
+		.optional()
+		.describe('Present only on the room’s primary genre tag; absent, never false, on the rest'),
+})
+
+/**
+ * A room's engagement counters. `CheerCount`/`FavoriteCount` are aggregated from the
+ * per-player `interaction` rows on every read. `VisitCount` is the room's lifetime
+ * visits — the `room.visits` column, bumped by the `match` worker on every successful
+ * matchmake into the room. Nothing records distinct visitors, so `VisitorCount` stays
+ * at 0.
+ */
+export const RoomStatsDto = z.object({
+	CheerCount: z.int(),
+	FavoriteCount: z.int(),
+	VisitorCount: z.int(),
+	VisitCount: z.int(),
+})
+
+/** One of the images shown while the room loads. */
+export const LoadScreenDto = z.object({
+	ImageName: z.string().describe('A CDN bucket key under `room/`'),
+	Title: z.string(),
+	Subtitle: z.string(),
+})
+
+/**
+ * The save as the room-save RESPONSE renders it — camelCase, and a different field set
+ * from the PascalCase `CurrentSave` embedded in a room (no persistence/OM/UGC versions,
+ * no moderation state, no asset arrays; but `unityAsset`/`unityAssetHash`/`dataBlobHash`
+ * that `CurrentSave` doesn't show). The two are deliberately not unified.
+ *
+ * Also what `GET …/subrooms/{subRoomId}/saves/{saveId}` answers — one save fetched by id
+ * is the same thing the save that created it returned, so both go through
+ * `toSaveResponse`. Note the `…/saves` LIST is the third shape here: it serves the raw
+ * PascalCase rows ({@link SubRoomDataSaveDto}), not this.
+ */
+export const SubRoomDataSaveResponseDto = z.object({
+	subRoomDataSaveId: z.int(),
+	subRoomId: z.int(),
+	unityAssetId: z.string().nullable().describe('Null unless the save carried one'),
+	unityAsset: z.string().nullable().describe('Always null — we resolve no baked assets'),
+	unityAssetHash: z.string().nullable().describe('Always null — we resolve no baked assets'),
+	dataBlob: z.string(),
+	dataBlobHash: z.string().nullable().describe('Echoed from the request’s `SubRoomData.Hash`'),
+	savedByAccountId: z.int().nullable(),
+	savedOnPlatform: z
+		.int()
+		.describe(
+			'Steam=0 Oculus=1 PlayStation=2 Xbox=3 RecNet=4 IOS=5 GooglePlay=6 Standalone=7 Pico=8'
+		),
+	savedOnDeviceClass: z.int().describe('Unknown=0 VR=1 Screen=2 Mobile=3 VRLow=4 Quest2=5'),
+	description: z.string().nullable(),
+	createdAt: z.string(),
+})
+
+/**
+ * A subroom's most recent room save — the `SubRoomDataSave` the client reads to find the
+ * scene-data blob to download. This is the ONLY place the loader looks for it, so a
+ * subroom whose `CurrentSave` is missing loads no saved content at all.
+ *
+ * The array fields are always empty here: we neither resolve nor record referenced Unity
+ * assets. They are still emitted because the client's parser expects them present.
+ */
+export const SubRoomDataSaveDto = z.object({
+	UnitySubAssets: z.array(z.unknown()).describe('Always empty'),
+	ReferencedUnityAssets: z.array(z.unknown()).describe('Always empty'),
+	SubRoomDataSaveId: z.int().describe('Numbered from 1, incremented on every save'),
+	SubRoomId: z.int().describe('The owning subroom — re-pointed when a subroom is cloned'),
+	DataBlob: z.string().describe('The scene-data key the client downloads from the CDN'),
+	ReferencedUnityAssetIds: z.array(z.string()).describe('Always empty'),
+	PersistenceVersion: z.int(),
+	OMVersion: z.int(),
+	UgcSubVersion: z.int(),
+	SavedByAccountId: z.int().nullable(),
+	SavedOnPlatform: z.int().describe('0 — the save request carries no platform'),
+	SavedOnDeviceClass: z.int().describe('0 — the save request carries no device class'),
+	Description: z.string().describe('The save comment; empty string when none'),
+	Tags: z.array(z.unknown()).describe('Always empty'),
+	ModerationState: z.int(),
+	CreatedAt: z.string(),
+	UnityAssetId: z.string().optional().describe('Emitted only when the save carried one'),
+})
+
+/**
+ * A subroom — a room's individual scene. Subrooms are their own table with a globally
+ * unique, autoincrementing `SubRoomId` (the original game mints them from a single
+ * sequence, not per-room); a room's `SubRooms` array is reconstructed on read.
+ *
+ * `CreatorAccountId` starts null on the seeded rooms and is filled in on the first save —
+ * the client NREs on a null one. `CurrentSave` is null until the first save; the flat
+ * `DataBlob`/`RoomDataBlob`/`DataSavedAt` fields are legacy and are NOT what the client
+ * loads from.
+ */
+export const SubRoomDto = z.object({
+	SubRoomId: z.int(),
+	RoomId: z.int(),
+	CreatorAccountId: z.int().nullable().describe('Null until the subroom’s first save'),
+	UnitySceneId: z.string().describe('The Unity scene the client loads'),
+	Name: z.string(),
+	LastModeratedSaveModerationState: z.int(),
+	IsSandbox: z.boolean(),
+	MaxPlayers: z.int(),
+	Accessibility: z
+		.int()
+		.describe('0 Private, 1 Public, 2 Unlisted, 3 Dev_only, 4 Dev_Unlisted — set independently'),
+	ShouldAutoStageSaves: z.boolean(),
+	StagedSubRoomDataSaveId: z.int().nullable(),
+	CurrentSave: SubRoomDataSaveDto.nullable().describe(
+		'The latest room save — where the client finds the scene blob. Null until first save'
+	),
+	DataBlob: z.string().optional().describe('Legacy flat key; the client reads `CurrentSave`'),
+	RoomDataBlob: z.string().optional().describe('Uploaded room-data key; absent until first save'),
+	DataSavedAt: z.string().optional().describe('ISO timestamp of the last save'),
+	PersistenceVersion: z.int().optional(),
+	InventionUsage: z.string().optional().describe('Recorded by a room save; absent until then'),
+})
+
+/** A room's localization settings — carried through verbatim; nothing localizes yet. */
+export const LocalizationContextDto = z.object({
+	TargetLocale: z.string().nullable(),
+	Scope: z.string().nullable(),
+	LocalizedFields: z.array(z.string()),
+})
+
+/**
+ * A room, exactly as stored: each room is a single JSON blob in D1 and every read
+ * serves it verbatim (PascalCase, the client-facing shape), with `SubRooms` re-attached
+ * from the subroom table. The seed data comes from `static/ImportRooms.json`.
+ */
+export const RoomDto = z.object({
+	RoomId: z.int(),
+	Name: z.string().describe('Unique, case-insensitively'),
+	Description: z.string(),
+	ImageName: z.string().describe('A CDN bucket key served back under `room/`'),
+	WarningMask: z.int().describe('Content-warning bit flags'),
+	CustomWarning: z.string().nullable(),
+	CreatorAccountId: z.int().describe('The room’s owner — always passes the role checks'),
+	State: z.int(),
+	Accessibility: z
+		.int()
+		.describe('0 = Private, 1 = Public, 2 = Unlisted. The room-browse feeds serve Public only'),
+	PublishState: z.int(),
+	SupportsLevelVoting: z.boolean(),
+	IsRRO: z.boolean().describe('A Rec Room Original — the client renders a virtual `rro` tag'),
+	IsRecRoomApproved: z.boolean(),
+	ExcludeFromLists: z.boolean(),
+	ExcludeFromSearch: z.boolean(),
+	SupportsScreens: z.boolean(),
+	SupportsWalkVR: z.boolean(),
+	SupportsTeleportVR: z.boolean(),
+	SupportsVRLow: z.boolean(),
+	SupportsQuest2: z.boolean(),
+	SupportsMobile: z.boolean(),
+	SupportsJuniors: z.boolean(),
+	MinLevel: z.int(),
+	AgeRating: z.int(),
+	CreatedAt: z.string(),
+	PublishedAt: z.string(),
+	BecameRRStudioRoomAt: z.string().nullable(),
+	Stats: RoomStatsDto,
+	BoostCount: z
+		.int()
+		.describe('Boosts on the room. Nothing grants boosts here, so always 0 — but present'),
+	CurrentSnapshotId: z
+		.int()
+		.nullable()
+		.describe('The room’s published snapshot. Nothing takes snapshots here, so always null'),
+	CCU: z
+		.int()
+		.nullable()
+		.describe('Concurrent users. Nothing counts live population here, so always null'),
+	RankingContext: z.unknown().nullable(),
+	IsDorm: z.boolean().describe('Auto-provisioned personal room; excluded from every feed'),
+	IsPlacePlay: z.boolean(),
+	MaxPlayerCalculationMode: z
+		.int()
+		.describe(
+			'0 AllSubrooms, 1 OnlyEntrySubrooms — set by `PUT …/max_player_calculation_mode`. A ' +
+				'stored setting; `MaxPlayers` is not derived from it here'
+		),
+	MaxPlayers: z.int(),
+	CloningAllowed: z.boolean().describe('False blocks `POST /rooms/{roomId}/clone`'),
+	DisableMicAutoMute: z.boolean(),
+	DisableRoomComments: z.boolean(),
+	EncryptVoiceChat: z.boolean(),
+	ToxmodEnabled: z.boolean(),
+	LoadScreenLocked: z.boolean(),
+	UgcVersion: z.int(),
+	PersistenceVersion: z.int(),
+	UgcSubVersion: z.int().nullable(),
+	MinUgcSubVersion: z.int().nullable(),
+	AutoLocalizeRoom: z.boolean(),
+	LocalizationContext: LocalizationContextDto,
+	IsDeveloperOwned: z.boolean(),
+	RankedEntityId: z.string(),
+	SubRooms: z.array(SubRoomDto).describe('Re-attached from the subroom table on every read'),
+	Roles: z.array(RoomRoleDto),
+	IsJuniorCreated: z.boolean(),
+	Tags: z.array(RoomTagDto),
+	PromoImages: z.array(z.unknown()),
+	PromoExternalContent: z.array(z.unknown()),
+	LoadScreens: z.array(LoadScreenDto),
+	RestrictedCircuitsAllowListNames: z.array(z.string()),
+	InventionUsage: z
+		.string()
+		.optional()
+		.describe('Legacy: room saves used to write this here; it now lives on the SUBROOM'),
+})
+
+/** A paged room list (`PagedResultsDTO<RoomDTO>`) — search, hot, similar. */
+export const PagedRooms = z.object({
+	Results: z.array(RoomDto),
+	TotalResults: z.int().describe('The full match count, not the page size'),
+})
+
+/**
+ * `GET /rooms/autocomplete_search` — the search box's suggestions: a bare array of plain
+ * STRINGS, not rooms and not an envelope. Each is a query the player can submit as-is; a
+ * tag suggestion carries its `#` so submitting it searches by tag.
+ */
+export const SearchSuggestions = z
+	.array(z.string())
+	.describe('Suggested search terms, best match first; empty when nothing matches')
+
+/**
+ * `GET /rooms/{roomId}/experience` — whether players earn XP in a room and how much of it
+ * counts in a day. A bare two-key object, no envelope.
+ *
+ * Nothing here meters per-room XP: progression is the `api` worker's, and it applies no
+ * room-scoped daily cap. So this is the config the client reads, not a limit this server
+ * enforces — the same answer for every room.
+ */
+export const RoomExperience = z.object({
+	Enabled: z.boolean().describe('Whether XP is earned in the room at all. Always false here'),
+	DailyLimit: z.int().describe('XP from this room that counts toward a player’s day'),
+})
+
+/**
+ * `GET /dormroom/me` — the dorm's `RoomId` as a BARE JSON number, not a room and not an
+ * envelope around one. The caller follows it with `GET /rooms/{roomId}` when it wants the
+ * room itself, so sending the whole DTO here was a payload nobody read.
+ */
+export const DormRoomId = z.int().describe('The caller’s dorm RoomId')
+
+/**
+ * A room lookup result: the room, or `{}` when nothing matched. The by-id/by-name
+ * lookups answer an empty object rather than a 404 — the client reads that as "no room".
+ */
+export const RoomLookup = z.union([RoomDto, z.object({})])
+
+/** The bare JSON string the lookup routes answer with when neither `id` nor `name` is given. */
+export const MissingLookupParam = z
+	.string()
+	.describe("`\"Either 'id' or 'name' query parameter is required\"`")
+
+/**
+ * A bare `{ success: true }` — the acknowledgement a write answers with when the client
+ * has nothing to re-render from it. NOT the `{ success, error, value }` room envelope: no
+ * `error` key and no `value`, so don't reach for this where the client redraws the room.
+ */
+export const SuccessEnvelope = z.object({
+	success: z.literal(true),
+})
+
+/**
+ * `GET /Room_server/rooms/{roomId}/bans/{playerId}/isBanned` — the ban check's envelope.
+ *
+ * NOT the `{ success, error, value }` the room mutations answer with: this one carries an
+ * `error_id` as well, and its `error` is NULL rather than the empty string those use. Same
+ * distinction the client's other envelopes draw, so don't unify them.
+ */
+export const IsBannedEnvelope = z.object({
+	success: z.literal(true).describe('The check ran; whether the player is banned is `value`'),
+	error: z.string().nullable().describe('Null — the check itself does not fail'),
+	error_id: z.string().nullable().describe('Null. Present as a key, unlike the room envelope'),
+	value: z.boolean().describe('Whether that player is banned from that room'),
+})
+
+/**
+ * `GET /rooms/{roomId}/bans/{playerId}/isBanned` — the same check, in the shape the client
+ * reads on the UNPREFIXED path.
+ *
+ * PascalCase, and deliberately not unified with {@link IsBannedEnvelope}: the two paths are
+ * two calls the client makes with two different decoders, and its decoder drops members it
+ * does not recognise silently, so a `value` served where it wants `Value` reads as `false` —
+ * a banned player looking unbanned — rather than as an error. `error_id` stays lowercase
+ * even here; that is how it comes off the wire, not a slip.
+ */
+export const IsBannedPascalEnvelope = z.object({
+	Value: z.boolean().describe('Whether that player is banned from that room'),
+	Success: z.literal(true).describe('The check ran; whether the player is banned is `Value`'),
+	Error: z.string().nullable().describe('Null — the check itself does not fail'),
+	error_id: z.string().nullable().describe('Null. Lowercase, unlike its three siblings'),
+})
+
+/**
+ * One ban in `GET /rooms/{roomId}/bans/history`. Seven keys, in the client's order — derived
+ * members before base ones, so `AccountId` is fifth.
+ */
+export const RoomBanRecordDto = z.object({
+	Status: z.int().describe('0 Active · 1 Elapsed (ran out) · 2 Lifted (unbanned early)'),
+	UnbannedByAccountId: z.int().nullable().describe('Who lifted it; null unless Lifted'),
+	BanEndTime: z
+		.string()
+		.nullable()
+		.describe(
+			'ISO 8601 UTC. Active: scheduled expiry, null when permanent. Elapsed: its expiry. Lifted: when it was lifted'
+		),
+	Reason: z.string().describe('`""` when no reason was given — never null'),
+	AccountId: z.int().describe('The banned player'),
+	BannedByAccountId: z.int().nullable().describe('Who issued the ban'),
+	BanStartTime: z.string().describe('ISO 8601 UTC, when the ban was issued'),
+})
+
+/** `GET /rooms/{roomId}/bans/history` — the PascalCase envelope, `error_id` lowercase. */
+export const RoomBanHistoryEnvelope = z.object({
+	Value: z
+		.object({
+			ActiveBan: RoomBanRecordDto.nullable().describe('The ban in force, or null'),
+			PreviousBans: RoomBanRecordDto.array().describe('Every ban that has ended, newest first'),
+		})
+		.nullable()
+		.describe('Null only when `id` is missing or not a number'),
+	Success: z.boolean(),
+	Error: z.string().nullable(),
+	error_id: z.string().nullable().describe('Null. Lowercase, unlike its three siblings'),
+})
+
+/** The bare JSON string the bulk lookups answer when the id list is over the cap. */
+export const TooManyLookupIds = z
+	.string()
+	.describe('`"At most 100 room ids may be looked up at once"`')
+
+// ---- Interaction -----------------------------------------------------------
+
+/**
+ * A player's own state on a room: whether they've cheered/favorited it, plus the last
+ * visit. `LastVisitedAt` is stamped with "now" on every read rather than served from the
+ * stored value — the client only uses it to order the recently-visited list.
+ */
+export const InteractionDto = z.object({
+	Cheered: z.boolean(),
+	Favorited: z.boolean(),
+	LastVisitedAt: z.string().describe('Always "now" — not the stored visit time'),
+})
+
+// ---- Featured rooms --------------------------------------------------------
+
+/** The compact room projection a featured-room group carries. */
+export const FeaturedRoomDto = z.object({
+	RoomId: z.int(),
+	RoomName: z.string(),
+	ImageName: z.string(),
+	IsRecRoomApproved: z.boolean(),
+	ExcludeFromLists: z.boolean(),
+	ExcludeFromSearch: z.boolean(),
+})
+
+/** A time-boxed group of featured rooms. There's one, and it's always active. */
+export const FeaturedRoomGroupDto = z.object({
+	FeaturedRoomGroupId: z.int(),
+	name: z.string(),
+	StartAt: z.string(),
+	EndAt: z.string(),
+	Rooms: z
+		.array(FeaturedRoomDto)
+		.describe('Randomly ordered, at most 10 — no editorial curation yet'),
+})
+
+// ---- Envelopes -------------------------------------------------------------
+//
+// The room writes answer one of two envelopes, both at HTTP 200 — the client reads the
+// success flag, not the status. Which one a route uses is not ours to choose: it's what
+// the client's deserializer for that call expects, so the two live side by side.
+
+/**
+ * The PascalCase result envelope (`Results.Ok(new RoomResult{...})`): a bare
+ * success/failure with a message, carrying no entity. `ErrorId` is a stable code the
+ * client may branch on; `Error` is the text it shows.
+ */
+export const RoomResultEnvelope = z.object({
+	Success: z.boolean(),
+	Value: z.unknown().nullable().describe('Always null — these routes carry no entity'),
+	ErrorId: z
+		.string()
+		.nullable()
+		.describe('e.g. `Rooms.DoesntExist`, `Rooms.NotOwner`; null on success'),
+	Error: z.string().nullable().describe('The message shown to the player; null on success'),
+})
+
+/** The lowercase envelope carrying the updated room — the client re-renders from `value`. */
+export const RoomEnvelope = z.object({
+	success: z.boolean(),
+	error: z.string().describe('Empty on success'),
+	value: RoomDto.nullable(),
+})
+
+/**
+ * What `POST /rooms/{roomId}/subrooms/{subRoomId}/data` answers: `value` carries BOTH the
+ * updated room and the save that was just created. Note `error` is NULL here, not the
+ * empty string the other room envelopes use.
+ */
+export const RoomSaveEnvelope = z.object({
+	success: z.boolean(),
+	error: z.string().nullable().describe('Null on success'),
+	value: z
+		.object({ room: RoomDto, subRoomDataSave: SubRoomDataSaveResponseDto })
+		.nullable()
+		.describe('Null on a rejection'),
+})
+
+/** The 401 the envelope-returning routes answer with — the only one that isn’t HTTP 200. */
+export const UNAUTHORIZED_ENVELOPE = json(
+	z.object({ success: z.literal(false), error: z.literal('Unauthorized'), value: z.null() }),
+	'Missing or invalid bearer token'
+)
+
+// ---- Request bodies --------------------------------------------------------
+
+/** `POST /rooms/{roomId}/clone` — also accepted as a `?name=` query param. */
+export const CloneRoomRequest = z.object({
+	name: z.string().describe('The new room’s name; must be unique'),
+})
+
+/** `PUT /rooms/{roomId}/description`. */
+export const DescriptionRequest = z.object({
+	description: z.string().describe('An absent field clears the description'),
+})
+
+/** `PUT /rooms/{roomId}/name`. */
+export const NameRequest = z.object({
+	name: z.string().describe('Non-empty, and not already taken by another room'),
+})
+
+/**
+ * `PUT /rooms/{roomId}/tags` — one route, two bodies, told apart by their FIELDS.
+ *
+ * A lone `tag` is the 2023 toggle: added when absent, removed when present. A `tag`
+ * alongside anything else is part of a whole-state save, where nothing toggles — `tag`
+ * repeats and is the complete user-tag set, `autoTag` adds a derived (Type 1) tag, and
+ * `primaryGenreTag` flags the genre. They compose into one write.
+ */
+export const TagRequest = z.object({
+	tag: z
+		.union([z.string(), z.array(z.string())])
+		.optional()
+		.describe(
+			'Alone: toggled (added when absent, removed when present). Alongside any other field, or repeated: the COMPLETE set of user (Type 0) tags — an omitted one is removed'
+		),
+	autoTag: z
+		.union([z.string(), z.array(z.string())])
+		.optional()
+		.describe(
+			'A derived tag to add at Type 1 (`limitsv2`, `beta`). Repeatable and additive — never removes one'
+		),
+	primaryGenreTag: z
+		.string()
+		.optional()
+		.describe(
+			'Set as the room’s primary genre. Added as a Type 0 tag if the room lacks it; every other tag keeps its place and loses the flag'
+		),
+})
+
+/** `PUT /rooms/{roomId}/image`. */
+export const ImageRequest = z.object({
+	imageName: z.string().describe('A key from the storage upload, stored un-prefixed'),
+})
+
+/** `PUT /rooms/{roomId}/roles/{accountId}` — a grant, or the invited player's answer. */
+export const RoleRequest = z.object({
+	role: z
+		.string()
+		.describe(
+			'The role tier: 10 Host, 20 Moderator. 30 CoOwner and 255 Creator are refused on a ' +
+				'grant — co-ownership is invited. Answering your own invite, it must equal the ' +
+				'standing `InvitedRole`, or be `0` to decline'
+		),
+})
+
+/** `PUT /rooms/{roomId}/creator` — the account taking the room over. */
+export const CreatorRequest = z.object({
+	accountId: z.string().describe('The player who becomes the room’s owner'),
+})
+
+/** `PUT /rooms/{roomId}/roles/{accountId}/invite`. */
+export const InviteRoleRequest = z.object({
+	role: z.string().describe('The role tier offered: 10 Host, 20 Moderator, 30 CoOwner'),
+})
+
+/** `POST /rooms/{roomId}/bans` — the player to ban from the room. */
+export const BanRequest = z.object({
+	id: z.string().describe('Account id of the player to ban'),
+	banMask: z
+		.string()
+		.optional()
+		.describe('Stored verbatim; meaning unknown — the client sends `0`. Defaults to 0'),
+	reason: z
+		.string()
+		.optional()
+		.describe('Free text, stored on the ban and shown in the kick message'),
+	durationMinutes: z
+		.string()
+		.optional()
+		.describe(
+			'Minutes until the ban lapses. Absent, empty or `0` is permanent; anything that is not a non-negative whole number is refused'
+		),
+})
+
+/** A stored room ban — what `POST /rooms/{roomId}/bans` answers in `value`. */
+export const RoomBanDto = z.object({
+	RoomId: z.int(),
+	BannedPlayerId: z.int(),
+	BanMask: z.int(),
+	BannedByAccountId: z.int().describe('Who issued the ban'),
+	CreatedAt: z.string(),
+	Reason: z.string().nullable().describe('Null when no reason was given'),
+	ExpiresAt: z.string().nullable().describe('ISO 8601 UTC when the ban lapses; null is permanent'),
+})
+
+/**
+ * One entry of `GET /rooms/{roomId}/bans` — the client's ban-list shape. camelCase and
+ * a different field set from the {@link RoomBanDto} the write answers: no room id (the
+ * path already says which room) and no ban mask.
+ */
+export const RoomBanEntryDto = z.object({
+	accountId: z.int().describe('The banned player'),
+	bannedByAccountId: z.int().describe('Who issued the ban'),
+	banStartTime: z.string().describe('ISO 8601 UTC, when the ban was issued'),
+})
+
+/** `DELETE /rooms/{roomId}/bans/bulk` — the players whose bans to lift. */
+export const UnbanBulkRequest = z.object({
+	id: z
+		.union([z.string(), z.array(z.string())])
+		.describe('Account id(s) to unban — repeated `id=` fields, or one comma-separated value'),
+	banMask: z.string().optional().describe('Sent by the client; ignored'),
+})
+
+/** What the bulk unban answers — the ban envelope, with `value` the removed bans. */
+export const RoomBansRemovedEnvelope = z.object({
+	success: z.boolean(),
+	error: z.string().describe('Empty on success'),
+	value: RoomBanDto.array()
+		.nullable()
+		.describe('The bans removed, in request order; null on a rejection'),
+})
+
+/** The envelope the ban write answers — same shape as the room writes, `value` is the ban. */
+export const RoomBanEnvelope = z.object({
+	success: z.boolean(),
+	error: z.string().describe('Empty on success'),
+	value: RoomBanDto.nullable().describe('Null on a rejection'),
+})
+
+/** `POST /rooms/{roomId}/leaderboards/{leaderboardId}` — configure one leaderboard slot. */
+export const LeaderboardRequest = z.object({
+	leaderboardTitle: z.string().describe('The title the board displays'),
+	statFormat: z.string().optional().describe('The stat-format int; defaults to 0'),
+	sortAscending: z
+		.string()
+		.optional()
+		.describe('`True` / `False` — whether lower scores rank first. Defaults to `False`'),
+})
+
+/**
+ * What both leaderboard routes answer: a bare success/failure carrying no entity.
+ * PascalCase `Success`/`Error` with a lowercase `error_id` — the same mixed casing the
+ * unprefixed isBanned envelope has ({@link IsBannedPascalEnvelope}), NOT the room
+ * mutations' lowercase `{ success, error, value }`.
+ */
+export const LeaderboardResultEnvelope = z.object({
+	Success: z.boolean(),
+	Error: z.string().nullable().describe('The message shown on a rejection; null on success'),
+	error_id: z.string().nullable().describe('Null. Lowercase, unlike its siblings'),
+})
+
+/** `PUT /rooms/{roomId}/warning`. */
+export const WarningRequest = z.object({
+	warningMask: z.string().describe('Content-warning bit flags, as an integer'),
+	customWarning: z.string().optional().describe('Set when present; an empty value clears it'),
+})
+
+/** `PUT /rooms/{roomId}/cloning`. */
+export const CloningRequest = z.object({
+	cloningAllowed: z.string().describe('`True` / `False`'),
+})
+
+/**
+ * `POST /rooms/bulk` form body — the room ids to look up, as a REPEATED `id` field
+ * (`id=888&id=532&…`), one value per id. This is how the client asks for a whole room list
+ * at once (70-odd ids in the wild), which is more than belongs in a query string.
+ */
+export const BulkRoomsRequest = z.object({
+	id: z.string().describe('Repeated once per room id; each value may also be comma-separated'),
+	excludePrivateRooms: z
+		.string()
+		.optional()
+		.describe('`True` drops rooms that are not publicly visible. Default `False`'),
+})
+
+/**
+ * `PUT /rooms/{roomId}/restrictions` — the room's platform/movement support flags. Only
+ * the fields actually posted are changed, and the names are matched case-insensitively.
+ */
+export const RestrictionsRequest = z.object({
+	supportsScreens: z.string().optional().describe('`True` / `False`'),
+	supportsWalkVR: z.string().optional().describe('`True` / `False`'),
+	supportsTeleportVR: z.string().optional().describe('`True` / `False`'),
+	supportsVRLow: z.string().optional().describe('`True` / `False`'),
+	supportsQuest2: z.string().optional().describe('`True` / `False`'),
+	supportsMobile: z.string().optional().describe('`True` / `False`'),
+	supportsJuniors: z.string().optional().describe('`True` / `False`'),
+})
+
+/** `PUT /rooms/{roomId}/loadscreen` — the posted screen replaces the whole list. */
+export const LoadScreenRequest = z.object({
+	imageName: z.string().describe('A key from the storage upload'),
+	title: z.string().optional(),
+	subtitle: z.string().optional(),
+})
+
+/** `PUT /rooms/{roomId}/accessibility`. */
+export const AccessibilityRequest = z.object({
+	accessibility: z.string().describe('0 = Private, 1 = Public, 2 = Unlisted'),
+})
+
+/**
+ * `PUT /rooms/{roomId}/subrooms/{subRoomId}/accessibility`. Unlike the room-level route
+ * above, the client sends the enum NAME here (`accessibility=Private`), so both the name
+ * and the number are accepted.
+ */
+export const SubRoomAccessibilityRequest = z.object({
+	accessibility: z
+		.string()
+		.describe(
+			'A `RoomAccessibility` name — `Private`, `Public`, `Unlisted`, `Dev_only`, ' +
+				'`Dev_Unlisted` (case-insensitive) — or its ordinal 0–4'
+		),
+})
+
+/**
+ * `PUT /rooms/{roomId}/subrooms/{subRoomId}/permissions` — the entries to change, keyed by
+ * (`Permission`, `Role`). Only the pairs sent are touched. `Override` is the client's
+ * checkbox: true stores the entry, false clears it back to the default.
+ */
+export const SubRoomPermissionsRequest = z
+	.array(
+		z.object({
+			Permission: z
+				.string()
+				.describe('e.g. `CAN_SAVE_INVENTIONS`, `CAN_INVITE`, `CAN_USE_DELETE_ALL_BUTTON`'),
+			Role: z.int().describe('The role tier the entry applies to (0 = everyone, 30 = co-owner)'),
+			Override: z
+				.boolean()
+				.describe(
+					'The override checkbox, and a JSON boolean unlike `Value`: true stores this entry, ' +
+						'false DELETES any stored one so the pair falls back to its default'
+				),
+			Type: z.int().describe('Always 0 in what the client sends; stored verbatim'),
+			Value: z
+				.string()
+				.describe(
+					'A STRING, not a boolean — usually `True` / `False`, but kept verbatim: not every ' +
+						'permission’s UI is a True/False picker. Ignored when `Override` is false'
+				),
+		})
+	)
+	.describe('An array — the client sends one even when changing a single permission')
+
+/**
+ * `POST /rooms/{roomId}/subrooms/{subRoomId}/publish_save` — promotes one save to live.
+ * Any id from the subroom's history works, so this is both publish and restore.
+ */
+export const PublishSaveRequest = z.object({
+	subRoomDataSaveId: z.string().describe('The `SubRoomDataSaveId` to make live'),
+})
+
+/** `POST /rooms/{roomId}/subrooms/{subRoomId}/move` — form body naming the destination. */
+export const MoveSubRoomRequest = z.object({
+	newRoomId: z.string().describe('The `RoomId` to move the subroom into'),
+})
+
+/**
+ * A room in the PascalCase `{ Value, Success, Error, error_id }` envelope — the same mixed
+ * casing the unprefixed isBanned check has ({@link IsBannedPascalEnvelope}), NOT the
+ * lowercase `{ success, error, value }` most room mutations answer. The newer settings
+ * routes (the subroom move, the max-player calculation mode) answer this one; the client
+ * decodes them with a different reader, so the two are kept apart deliberately.
+ */
+export const RoomPascalEnvelope = z.object({
+	Value: RoomDto.nullable().describe('The room as it now stands; null on a rejection'),
+	Success: z.boolean(),
+	Error: z.string().nullable().describe('The message shown on a rejection; null on success'),
+	error_id: z.string().nullable().describe('Null. Lowercase, unlike its siblings'),
+})
+
+/**
+ * `PUT /rooms/{roomId}/max_player_calculation_mode` — how the room's player cap is meant to
+ * be read. The client sends the enum NAME; the ordinal is accepted alongside it.
+ */
+export const MaxPlayerCalculationModeRequest = z.object({
+	maxPlayerCalculationMode: z
+		.string()
+		.describe('`AllSubrooms` (0) or `OnlyEntrySubrooms` (1), case-insensitive, or the ordinal'),
+})
+
+/** `POST /rooms/{roomId}/subrooms`. */
+export const CreateSubRoomRequest = z.object({
+	name: z.string().describe('The new subroom’s name'),
+})
+
+/** `PUT /rooms/{roomId}/subrooms/{subRoomId}/modify`. */
+export const ModifySubRoomRequest = z.object({
+	name: z.string().describe('Required — an empty name is rejected'),
+	accessibility: z
+		.string()
+		.optional()
+		.describe('A `RoomAccessibility` name (case-insensitive) or its ordinal 0–4'),
+	maxPlayers: z.string().optional().describe('Ignored when not a positive integer'),
+})
+
+/**
+ * `POST /rooms/{roomId}/subrooms/{subRoomId}/data` — the room save. The blobs are
+ * uploaded to the CDN through the `storage` worker first; this call points the subroom
+ * at them. Every field is optional: a save that carries only `SubRoomData` still stamps
+ * the save time.
+ */
+export const SaveSubRoomDataRequest = z.object({
+	SubRoomData: z
+		.object({ Filename: z.string() })
+		.optional()
+		.describe('The uploaded scene-data blob — becomes the subroom’s `CurrentSave.DataBlob`'),
+	RoomData: z
+		.object({ Filename: z.string() })
+		.optional()
+		.describe('The uploaded room-level data blob — becomes `RoomDataBlob`'),
+	Description: z
+		.string()
+		.optional()
+		.describe('The save comment — a description of THIS revision, not the room’s description'),
+	PersistenceVersion: z.int().optional().describe('Recorded on the save and the subroom'),
+	InventionUsage: z.string().optional().describe('Recorded on the subroom'),
+	UnityAssetId: z.string().nullable().optional().describe('Recorded on the save when set'),
+	AutoPublish: z
+		.boolean()
+		.optional()
+		.describe('True publishes the save immediately; otherwise it is staged'),
+})
+
+/**
+ * `GET /rooms/{roomId}/subrooms/{subRoomId}/saves` — the room-history page. Every save
+ * appends a `subroom_save` row rather than overwriting, so this is the subroom's full
+ * history, newest first, paged by `skip`/`take`.
+ */
+export const SubRoomSavesPage = z.object({
+	Results: z.array(SubRoomDataSaveDto).describe('The page of saves, newest first'),
+	TotalResults: z.int().describe('The whole history’s size, not the page’s'),
+	TotalCount: z.int().describe('Same value as `TotalResults` — the two references disagree'),
+})
+
+/**
+ * One save as `GET …/subrooms/{subRoomId}/saves/no_unity_assets` lists it: the same
+ * PascalCase row as {@link SubRoomDataSaveDto} with the Unity-asset payloads left out —
+ * no `UnitySubAssets`, no `ReferencedUnityAssets`, no `Tags` — keeping only the asset
+ * IDENTIFIERS (`UnityAssetId`, `ReferencedUnityAssetIds`).
+ *
+ * The one field that differs rather than disappearing is `UnityAssetId`: always present
+ * here, null when the save carried none, where the full row emits it only when it did.
+ */
+export const SubRoomDataSaveNoUnityAssetsDto = z.object({
+	SubRoomDataSaveId: z.int(),
+	SubRoomId: z.int(),
+	UnityAssetId: z.string().nullable().describe('Null unless the save carried one'),
+	ReferencedUnityAssetIds: z.array(z.string()).describe('Always empty — we record none'),
+	DataBlob: z.string().describe('The scene-data key the client downloads from the CDN'),
+	DataBlobHash: z.string().nullable(),
+	PersistenceVersion: z.int(),
+	OMVersion: z.int(),
+	SavedByAccountId: z.int().nullable(),
+	SavedOnPlatform: z.int().describe('0 — the save request carries no platform'),
+	SavedOnDeviceClass: z.int().describe('0 — the save request carries no device class'),
+	Description: z.string().describe('The save comment; empty string when none'),
+	ModerationState: z.int(),
+	CreatedAt: z.string(),
+	UgcSubVersion: z.int(),
+})
+
+/**
+ * `GET /rooms/{roomId}/subrooms/{subRoomId}/saves/no_unity_assets` — the same history page
+ * as {@link SubRoomSavesPage}, carrying the lighter rows. A BARE paged wrapper: no
+ * `{ success, error, value }` envelope around it, unlike the room mutations.
+ */
+export const SubRoomSavesNoUnityAssetsPage = z.object({
+	Results: z.array(SubRoomDataSaveNoUnityAssetsDto).describe('The page of saves, newest first'),
+	TotalResults: z.int().describe('The whole history’s size, not the page’s'),
+	TotalCount: z.int().describe('Same value as `TotalResults` — the two references disagree'),
+})
+
+// ---- Session ---------------------------------------------------------------
+
+/** One entry of the permission table the client applies when it spawns into a room. */
+export const RoomPermissionDto = z.object({
+	Override: z.boolean().describe('Always true on an entry that came from a subroom’s overrides'),
+	Permission: z.string().describe('e.g. `CAN_USE_MAKER_PEN`, `CAN_SAVE_INVENTIONS`'),
+	Role: z.int().describe('The role tier the permission applies to (0 = everyone)'),
+	Type: z.int(),
+	Value: z
+		.string()
+		.describe('A STRING, not a boolean — `True` on the defaults, anything on an override'),
+})
+
+/**
+ * The permissions + Photon credentials the client needs to spawn into a room.
+ *
+ * `PhotonAccessToken` is deliberately empty: the reference server signs it with a
+ * secret/algorithm we don't have, and our Photon setup accepts an empty token. The
+ * global (Role 0) maker pen is granted only to the hardcoded dev accounts.
+ *
+ * `Permissions` is the default table with the overrides stored on the subroom the caller
+ * is standing in merged over it (see
+ * `PUT /rooms/{roomId}/subrooms/{subRoomId}/permissions`): an override replaces the
+ * default with the same (`Permission`, `Role`), and one naming a new pair is appended.
+ */
+export const PhotonAccessTokenDto = z.object({
+	Permissions: z.array(RoomPermissionDto),
+	PhotonAccessToken: z.string().describe('Always empty — see above'),
+	RoomInstanceId: z
+		.int()
+		.nullable()
+		.describe('The caller’s current instance, from presence; null when they’re in none'),
+})
+
+/** `GET /rooms/{roomId}/playerdata/me` — per-room player data. Nothing stores any yet. */
+export const PlayerDataDto = z.object({
+	Data: z.string().describe('Always empty — no per-room player data is stored'),
+})
+
+/**
+ * `GET /rooms/{roomId}/experience/player` — the caller's per-room experience/progression
+ * entries. Stubbed empty; the element shape is unknown until something stores one.
+ */
+export const RoomExperiencePlayer = z
+	.array(z.unknown())
+	.describe('Always empty — no per-room experience is tracked')
+
+/**
+ * `GET /showcase/{playerId}` — the rooms a player showcases on their profile. Stubbed
+ * empty; nothing stores a showcase, so the element shape is unknown until something does.
+ */
+export const ShowcasedRooms = z
+	.array(z.unknown())
+	.describe('Always empty — no room showcase is stored')
+
+/**
+ * `GET /rooms/curated_playlists` — the curated room playlists the discovery pages'
+ * playlist sections draw from. Nothing curates one on this server, so the list is always
+ * empty and the element shape is unknown until something fills it.
+ */
+export const CuratedPlaylists = z
+	.array(z.unknown())
+	.describe('Always empty — nothing curates a room playlist yet')
+
+/**
+ * `GET /publishState/configs` — the limits the client enforces on republishing a room:
+ * how many updates are allowed in the rolling window, and the cooldown/expiry around
+ * them. Served as fixed values from the reference server.
+ *
+ * The envelope is NOT the `{ success, error, value }` one the room mutations use: `error`
+ * is null rather than `""`, and there's an extra `error_id`. Kept as-is — the client
+ * reads both keys.
+ */
+export const PublishStateConfigsEnvelope = z.object({
+	value: z.object({
+		UpdateMaxCount: z.int().describe('Updates allowed per rolling window'),
+		UpdateRollingWindowInDays: z.int().describe('Length of that window, in days'),
+		UpdateExpirationInDays: z.int().describe('Days before an update expires'),
+		UpdateCooldownInDays: z.int().describe('Days between updates'),
+	}),
+	success: z.literal(true),
+	error_id: z.null(),
+	error: z.null(),
+})

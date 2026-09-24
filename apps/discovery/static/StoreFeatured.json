@@ -1,0 +1,16 @@
+[
+	{
+		"Id": "store-featured-hot",
+		"SectionType": 4,
+		"Source": "UnifiedAlgorithmicList",
+		"SourceMetadata": "hotitems",
+		"DisplayMetadata": "{\"DisplayTitle\":\"Hot Right Now\",\"numRows\":1,\"itemCount\":12,\"minItemsToShowSection\":1,\"horizontalScrollEnabled\":true}"
+	},
+	{
+		"Id": "store-featured-new",
+		"SectionType": 4,
+		"Source": "UnifiedAlgorithmicList",
+		"SourceMetadata": "newitems",
+		"DisplayMetadata": "{\"DisplayTitle\":\"New This Week\",\"numRows\":1,\"itemCount\":12,\"minItemsToShowSection\":1,\"horizontalScrollEnabled\":true}"
+	}
+]

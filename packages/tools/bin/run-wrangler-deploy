@@ -1,0 +1,204 @@
+#!/bin/sh
+set -eu
+
+. "$(git rev-parse --show-toplevel)/packages/tools/src/sh/env.sh"
+
+# Extract name and version from package.json using jq
+NAME=$(jq -r '.name' package.json)
+VERSION=$(get-version)
+
+# Everything an operator supplies — domain, resource ids, tuning knobs — comes from the
+# single gitignored .env at the repo root (in CI, from exported secrets, which win over the
+# file). See .env.example.
+recflare_load_env
+
+# Resolve the base domain (and this worker's subdomain), then deploy onto the
+# custom domain via `--domain`. This keeps the real domain out of versioned files
+# — committed wrangler.jsonc has no routes, and the base domain is passed as the
+# DOMAIN var at runtime. Per-app subdomain overrides come from RECFLARE_SUBDOMAINS
+# (a JSON object keyed by default subdomain, e.g. {"playersettings":"settings"}).
+#
+# The whole object also rides along as the SUBDOMAINS var, because the `ns` worker
+# has to advertise the same hosts to the client that we deploy onto here. Keying it
+# by default subdomain is what lets one .env entry do both: a worker's directory
+# name IS its default subdomain, so the lookup below and the one in ns/endpoints.ts
+# read the same key. Entries for services with no worker (e.g. "moderation") are
+# client-side redirects only — nothing here matches them.
+if [ -z "${RECFLARE_DOMAIN:-}" ]; then
+	echo "error: RECFLARE_DOMAIN is not set — export it or add it to .env (see .env.example)" >&2
+	exit 1
+fi
+
+DOMAIN="$RECFLARE_DOMAIN"
+SUBDOMAINS_JSON=${RECFLARE_SUBDOMAINS:-}
+[ -n "$SUBDOMAINS_JSON" ] || SUBDOMAINS_JSON='{}'
+
+DIR=$(basename "$PWD")
+# Per-app subdomain override, falling back to the worker's directory name.
+SUBDOMAIN=$(printf '%s' "$SUBDOMAINS_JSON" | jq -r --arg d "$DIR" '.[$d] // $d')
+HOST="$SUBDOMAIN.$DOMAIN"
+
+# Splice deploy-time resource ids into a generated config. The committed
+# wrangler.jsonc carries "local" placeholders so it needs no per-developer edits;
+# the real ids stay in the gitignored .env / CI secrets. Workers without these
+# bindings simply have no placeholder to replace.
+#
+#   D1 — RECFLARE_D1: a single id (all workers share the one `recflare` database).
+#   KV — RECFLARE_KV: a JSON object keyed by binding name, since each KV namespace
+#        is distinct, e.g. {"RECFLARE_MATCH_PRESENCE":"…","RECFLARE_PLAYER_SETTINGS":"…"}.
+#   Secrets Store — RECFLARE_SECRETS_STORE: a single store id (all workers bind the
+#        one shared store for the JWT signing key).
+CONFIG="wrangler.jsonc"
+
+# Workers built with @cloudflare/vite-plugin (e.g. the React SPA in www) emit a
+# deploy-ready config into dist/<dir>/ that carries the built worker
+# (main: index.js), the resolved assets.directory, and no_bundle. The committed
+# wrangler.jsonc leaves assets.directory out on purpose — the plugin fills it in —
+# so deploying the source config fails with "assets ... missing the required
+# directory property". Prefer the generated config when it exists.
+#
+# The plugin copies the bindings across verbatim, placeholders and all, so these
+# configs need the same id-splicing as the rest — www binds the Secrets Store for its
+# Turnstile keys. It gets its own branch below because the emitted file is minified
+# single-line JSON, which the line-oriented sed/awk passes can't edit correctly.
+VITE_CONFIG="dist/$DIR/wrangler.json"
+IS_VITE=""
+if [ -f "$VITE_CONFIG" ]; then
+	CONFIG="$VITE_CONFIG"
+	IS_VITE=1
+fi
+
+NEEDS_D1=$(grep -q '"database_id": *"local"' "$CONFIG" 2>/dev/null && echo 1 || true)
+NEEDS_KV=$(grep -q '"id": *"local"' "$CONFIG" 2>/dev/null && echo 1 || true)
+NEEDS_STORE=$(grep -q '"store_id": *"local"' "$CONFIG" 2>/dev/null && echo 1 || true)
+
+# Vite-built config: plain JSON, so jq does the splicing structurally (by binding
+# name for KV) rather than by line. Written beside the original so its relative
+# paths (main, assets.directory) still resolve. Gitignored; removed on exit.
+if [ "$CONFIG" = "$VITE_CONFIG" ] && { [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ] || [ -n "$NEEDS_STORE" ]; }; then
+	GENERATED="dist/$DIR/wrangler.generated.json"
+	trap 'rm -f "$GENERATED"' EXIT
+
+	if [ -n "$NEEDS_D1" ] && [ -z "${RECFLARE_D1:-}" ]; then
+		echo "error: RECFLARE_D1 is not set — add the recflare D1 id to .env (see .env.example)" >&2
+		exit 1
+	fi
+	if [ -n "$NEEDS_STORE" ] && [ -z "${RECFLARE_SECRETS_STORE:-}" ]; then
+		echo "error: RECFLARE_SECRETS_STORE is not set — add the secrets store id to .env (see .env.example)" >&2
+		exit 1
+	fi
+
+	KV_JSON=${RECFLARE_KV:-}
+	[ -n "$KV_JSON" ] || KV_JSON='{}'
+
+	jq \
+		--arg db "${RECFLARE_D1:-}" \
+		--arg store "${RECFLARE_SECRETS_STORE:-}" \
+		--argjson kv "$KV_JSON" '
+		(.d1_databases // []) |= map(
+			if .database_id == "local" then .database_id = $db else . end
+		)
+		| (.kv_namespaces // []) |= map(
+			if .id == "local" then
+				.id = ($kv[.binding] //
+					error("no KV id for binding [" + .binding + "] in RECFLARE_KV — add it to .env (see .env.example)"))
+			else . end
+		)
+		| (.secrets_store_secrets // []) |= map(
+			if .store_id == "local" then .store_id = $store else . end
+		)
+	' "$VITE_CONFIG" >"$GENERATED" || exit 1
+	CONFIG="$GENERATED"
+fi
+
+if [ "$CONFIG" = "wrangler.jsonc" ] && { [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" ] || [ -n "$NEEDS_STORE" ]; }; then
+	CONFIG="wrangler.generated.jsonc"
+	# Generated alongside the original so its relative paths (main, migrations_dir)
+	# still resolve. Gitignored; removed on exit so `wrangler dev` is unaffected.
+	trap 'rm -f wrangler.generated.jsonc wrangler.generated.tmp' EXIT
+	cp wrangler.jsonc wrangler.generated.jsonc
+
+	if [ -n "$NEEDS_D1" ]; then
+		DB_ID=${RECFLARE_D1:-}
+		if [ -z "$DB_ID" ]; then
+			echo "error: RECFLARE_D1 is not set — add the recflare D1 id to .env (see .env.example)" >&2
+			exit 1
+		fi
+		sed -E 's/("database_id"[[:space:]]*:[[:space:]]*")[^"]*(")/\1'"$DB_ID"'\2/' \
+			wrangler.generated.jsonc >wrangler.generated.tmp
+		mv wrangler.generated.tmp wrangler.generated.jsonc
+	fi
+
+	if [ -n "$NEEDS_KV" ]; then
+		KV_JSON=${RECFLARE_KV:-}
+		[ -n "$KV_JSON" ] || KV_JSON='{}'
+		# Map binding name -> id, then replace each kv_namespaces `"id": "local"`
+		# with the id for its nearest preceding "binding" line. awk keeps state so
+		# multiple namespaces in one file each get the right id.
+		KV_PAIRS=$(printf '%s' "$KV_JSON" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+		awk -v pairs="$KV_PAIRS" '
+			BEGIN {
+				n = split(pairs, lines, "\n")
+				for (i = 1; i <= n; i++) {
+					if (lines[i] == "") continue
+					t = index(lines[i], "\t")
+					id[substr(lines[i], 1, t - 1)] = substr(lines[i], t + 1)
+				}
+			}
+			/"binding"[[:space:]]*:/ {
+				b = $0
+				sub(/.*"binding"[[:space:]]*:[[:space:]]*"/, "", b)
+				sub(/".*/, "", b)
+				curbind = b
+			}
+			/"id"[[:space:]]*:[[:space:]]*"local"/ {
+				if (!(curbind in id)) {
+					print "error: no KV id for binding [" curbind "] in RECFLARE_KV — add it to .env (see .env.example)" >"/dev/stderr"
+					exit 3
+				}
+				sub(/"local"/, "\"" id[curbind] "\"")
+			}
+			{ print }
+		' wrangler.generated.jsonc >wrangler.generated.tmp || exit 1
+		mv wrangler.generated.tmp wrangler.generated.jsonc
+	fi
+
+	if [ -n "$NEEDS_STORE" ]; then
+		STORE_ID=${RECFLARE_SECRETS_STORE:-}
+		if [ -z "$STORE_ID" ]; then
+			echo "error: RECFLARE_SECRETS_STORE is not set — add the secrets store id to .env (see .env.example)" >&2
+			exit 1
+		fi
+		sed -E 's/("store_id"[[:space:]]*:[[:space:]]*")[^"]*(")/\1'"$STORE_ID"'\2/' \
+			wrangler.generated.jsonc >wrangler.generated.tmp
+		mv wrangler.generated.tmp wrangler.generated.jsonc
+	fi
+fi
+
+# The operator's tuning knobs, injected the same way as the resource ids above: each lives
+# in the .env as RECFLARE_<VAR> and rides along as a `--var`. See recflare_vars in
+# packages/tools/src/sh/env.sh. run-wrangler-dev passes the same flags, so one .env tunes
+# both a deploy and a local dev server.
+EXTRA_VARS=$(recflare_vars)
+
+# Vite-built configs set no_bundle (vite already bundled and minified), which is
+# incompatible with --minify. Only pass --minify when wrangler does the bundling.
+# Keyed on IS_VITE, not on $CONFIG: the splicing above may have swapped $CONFIG for
+# the generated copy, which is just as no_bundle as the file it came from.
+MINIFY="--minify"
+[ -n "$IS_VITE" ] && MINIFY=""
+
+# Deploy with wrangler using the extracted values as binding variables
+echo "Deploying worker $NAME version $VERSION to $HOST"
+# $EXTRA_VARS is intentionally unquoted — it's a flag list to word-split, and no knob value
+# contains whitespace (see recflare_vars), so there's nothing to split on inside a value.
+wrangler deploy \
+	--config "$CONFIG" \
+	--var NAME:"$NAME" \
+	--var SENTRY_RELEASE:"$VERSION" \
+	--var DOMAIN:"$DOMAIN" \
+	--var SUBDOMAINS:"$SUBDOMAINS_JSON" \
+	$EXTRA_VARS \
+	--domain "$HOST" \
+	$MINIFY \
+	"$@"

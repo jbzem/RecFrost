@@ -1,0 +1,374 @@
+import { Hono } from 'hono'
+import { useWorkersLogger } from 'workers-tagged-logger'
+
+import { createNotification, writeAuditLog } from '@repo/domain'
+import { logger, withDefaultCors, withNotFound, withOnError } from '@repo/hono-helpers'
+import { validateAndGetAccountId, validateAndGetRoles } from '@repo/jwt'
+
+import {
+	COACH_MESSAGE_TYPE,
+	COACH_PLAYER_ID,
+	NotificationsHub,
+	OWNER_HEADER,
+} from './notifications-hub'
+
+import type { Context, MiddlewareHandler } from 'hono'
+import type { App } from './context'
+
+/**
+ * Maps a SignalR hub at `/hub/v1`. The hub itself — WebSocket transport, the
+ * SignalR JSON Hub Protocol, and the shared connection state —
+ * lives in the `NotificationsHub` Durable Object; this worker handles the
+ * SignalR negotiate handshake, forwards the WebSocket upgrade to the DO, and
+ * exposes internal send/broadcast endpoints for other workers.
+ */
+
+/** The hub state is global → one DO instance. */
+const HUB_INSTANCE = 'global'
+
+/**
+ * How many times to re-issue a hub call Cloudflare aborted mid-flight.
+ *
+ * The platform occasionally resets a Durable Object under us — "Internal error in Durable
+ * Object storage caused object to be reset", carrying `retryable: true` and
+ * `durableObjectReset: true`. It is not a fault in the call: the object is rebuilt from its
+ * last durable state and the same call succeeds. Without a retry it surfaces as a 500 and
+ * the notification is simply lost, which is why these arrive periodically rather than
+ * predictably.
+ *
+ * Two attempts after the first is plenty — a reset that persists past that is an outage,
+ * not a blip, and the caller should hear about it.
+ */
+const HUB_RETRIES = 2
+
+/**
+ * Whether an error is one Cloudflare says to retry. `retryable` is set on the error the
+ * runtime throws; `durableObjectReset` accompanies the reset flavour of it. Anything else —
+ * a bug in a hub method, a bad argument — is thrown straight back, since retrying it would
+ * only produce the same failure more slowly.
+ */
+function isRetryableHubError(err: unknown): boolean {
+	if (typeof err !== 'object' || err === null) return false
+	const fields = err as { retryable?: unknown; durableObjectReset?: unknown }
+	return fields.retryable === true || fields.durableObjectReset === true
+}
+
+/**
+ * Call the hub, retrying a reset. A FRESH stub per attempt: the one that threw is bound to
+ * the object that just died.
+ *
+ * Safe to retry because a reset rolls the object back — the aborted call left nothing
+ * behind — and because every frame the hub sends is a complete, absolute statement (a
+ * notification, not a delta), so a duplicate is at worst a repeat and never a drift.
+ */
+async function hubCall<T>(
+	c: Context<App>,
+	call: (hub: ReturnType<App['Bindings']['RECFLARE_NOTIFICATIONS_HUB']['getByName']>) => Promise<T>
+): Promise<T> {
+	let lastError: unknown
+	for (let attempt = 0; attempt <= HUB_RETRIES; attempt++) {
+		try {
+			return await call(c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE))
+		} catch (err) {
+			if (!isRetryableHubError(err)) throw err
+			lastError = err
+			logger.warn('hub call reset, retrying', {
+				attempt: attempt + 1,
+				of: HUB_RETRIES + 1,
+				error: err instanceof Error ? err.message : String(err),
+			})
+		}
+	}
+	throw lastError
+}
+
+/**
+ * A valid notification `Id` — a client-defined string tag (e.g. "AccountUpdate")
+ * or a numeric code. An empty string is treated as missing.
+ */
+function isNotificationType(value: unknown): value is string | number {
+	return (typeof value === 'string' && value !== '') || typeof value === 'number'
+}
+
+/**
+ * Roles allowed to call the internal send/broadcast endpoints. These are the
+ * operator-granted elevated roles (see the auth worker's `role` claim, set from an
+ * account's isDeveloper/isModerator flags via the admin CLI) — so a staffer grants
+ * themselves the role and can then push notifications through the shared hub, e.g.
+ * from the accounts web UI's maintenance control.
+ */
+const ADMIN_ROLES = new Set(['developer', 'moderator'])
+
+/**
+ * The player opening a hub WebSocket, or null when the connect carries no valid token.
+ *
+ * A WebSocket connect can't always carry an `Authorization` header — SignalR clients
+ * that can't set headers on the upgrade put the token in an `access_token` query
+ * param instead — so both are accepted, header first.
+ */
+async function connectionOwner(c: Context<App>): Promise<number | null> {
+	const secret = await c.env.JWT_SECRET.get()
+	const id = await validateAndGetAccountId(c.req.raw, secret)
+	if (id !== null) return id
+
+	const token = c.req.query('access_token')
+	if (!token) return null
+	return validateAndGetAccountId(
+		new Request(c.req.url, { headers: { Authorization: `Bearer ${token}` } }),
+		secret
+	)
+}
+
+/**
+ * The `action` an `/internal/<path>` call is recorded under — the path after the prefix as a
+ * stable snake_case verb, so `/internal/coach-message` files under `coach_message`.
+ *
+ * Derived rather than mapped, so the audit trail can't fall behind the routes: a new
+ * `/internal/*` endpoint is logged the day it is added, with no second list to keep in sync.
+ * The cost is that the value comes from the request, so it is squeezed down to `[a-z0-9_]`
+ * and capped — this middleware also runs for `/internal/` paths that match no route at all
+ * (they 404 just after it), and an admin token reaching for one is still worth a row.
+ */
+function auditAction(path: string): string {
+	const slug = path
+		.replace(/^\/internal\/?/, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '_')
+		.replace(/^_+|_+$/g, '')
+		.slice(0, 64)
+	return slug === '' ? 'unknown' : slug
+}
+
+/**
+ * Record one `/internal/*` call against the account that made it.
+ *
+ * What is kept is what was ASKED FOR plus how it was answered: the request body (or the
+ * query string, for the reads) is the substance of the action — a coach message's text and
+ * recipient exist nowhere else once the frame has gone out, and a broadcast is a WebSocket
+ * frame and then nothing — and the status says whether it happened. Reading the body here
+ * costs nothing: Hono caches a parsed body on the request, so this is the same object the
+ * handler parsed rather than a second read of a consumed stream.
+ *
+ * Never throws. By the time this runs the action has usually already taken place, so a
+ * failed insert must not turn a delivered coach message into an error for the caller — it
+ * leaves a loud line in the worker log instead, which is the one thing a gap in an audit
+ * trail should never do quietly.
+ */
+async function recordInternalCall(c: Context<App>, playerId: number, status: number) {
+	const action = auditAction(c.req.path)
+	const data: Record<string, unknown> = { method: c.req.method, path: c.req.path, status }
+
+	// A GET carries no body by definition; everything else may, and a request whose body
+	// isn't JSON (or is empty, as the DELETE's is) simply records none.
+	const body = c.req.method === 'GET' ? null : await c.req.json().catch(() => null)
+	if (body !== null) data.body = body
+	const query = c.req.query()
+	if (Object.keys(query).length > 0) data.query = query
+
+	try {
+		await writeAuditLog(c.env.DB, { playerId, action, data })
+	} catch (err) {
+		logger.error('could not write an audit log row', {
+			action,
+			playerId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+/**
+ * Gates the `/internal/*` endpoints on a valid Bearer token that carries one of the
+ * {@link ADMIN_ROLES} in its `role` claim. 401 for a missing/invalid token, 403 for a
+ * valid token that lacks an admin role.
+ *
+ * Also where every call through here is AUDITED (see {@link recordInternalCall}). It sits in
+ * the gate rather than in each handler for the same reason the gate does: these endpoints
+ * are the operator's remote control over every connected client, and a record of who used
+ * it should not be something a new endpoint can forget to add.
+ */
+const requireAdmin: MiddlewareHandler<App> = async (c, next) => {
+	const secret = await c.env.JWT_SECRET.get()
+	const roles = await validateAndGetRoles(c.req.raw, secret)
+	if (roles === null) return c.json({ error: 'Unauthorized' }, 401)
+
+	// Every call is filed under the account that made it, so a token with an admin role but
+	// no usable `sub` is refused rather than let through unattributable. One minted by `auth`
+	// always has one, so this costs a real caller nothing.
+	const accountId = await validateAndGetAccountId(c.req.raw, secret)
+	if (accountId === null) return c.json({ error: 'Unauthorized' }, 401)
+
+	if (!roles.some((role) => ADMIN_ROLES.has(role))) {
+		// Recorded like any other call: a signed-in account reaching for an admin endpoint is
+		// exactly what an audit trail is kept for, and unlike the 401 above we know who it was.
+		await recordInternalCall(c, accountId, 403)
+		return c.json({ error: 'Forbidden' }, 403)
+	}
+
+	// Recorded AFTER the handler so the row can carry the outcome, and from a `finally` so a
+	// handler that throws is recorded too — as the 500 `onError` is about to answer with.
+	let status = 500
+	try {
+		await next()
+		status = c.res.status
+	} finally {
+		await recordInternalCall(c, accountId, status)
+	}
+}
+
+const app = new Hono<App>()
+	.use(
+		'*',
+		// middleware
+		(c, next) =>
+			useWorkersLogger(c.env.NAME, {
+				environment: c.env.ENVIRONMENT,
+				release: c.env.SENTRY_RELEASE,
+			})(c, next)
+	)
+
+	// The website (`www`) is a browser origin calling these endpoints directly, the way
+	// rec.net's own site called the game's API — so the responses need CORS headers or
+	// the browser discards them. `origin: '*'` is deliberate and safe HERE because these
+	// endpoints authenticate with a bearer token in the `Authorization` header, never a
+	// cookie: a hostile page can't read another origin's stored token, so there is no
+	// ambient credential for `*` to expose. Do not add cookie auth without narrowing it.
+	.use('*', withDefaultCors())
+
+	.onError(withOnError())
+	.notFound(withNotFound())
+
+	// SignalR negotiation. Clients POST here first; we hand back an id that is
+	// then passed as `?id=` on the WebSocket connect. We don't pre-register it —
+	// the DO adopts whatever id arrives — so negotiate stays stateless.
+	.post('/hub/v1/negotiate', (c) => {
+		const negotiateVersion = Number(c.req.query('negotiateVersion')) || 0
+		const id = crypto.randomUUID()
+		logger.info('signalr negotiate', { negotiateVersion })
+		return c.json({
+			negotiateVersion,
+			connectionId: id,
+			connectionToken: id,
+			availableTransports: [{ transport: 'WebSockets', transferFormats: ['Text'] }],
+		})
+	})
+
+	// The hub WebSocket. Upgrade requests are forwarded to the Durable Object, tagged
+	// with the connecting player so the hub can route their own notifications to them.
+	.get('/hub/v1', async (c) => {
+		if ((c.req.header('upgrade') ?? '').toLowerCase() !== 'websocket') {
+			return c.json({ error: 'Expected a WebSocket upgrade request' }, 426)
+		}
+
+		const playerId = await connectionOwner(c)
+		// Every notification the hub sends is either for a specific player or a
+		// broadcast to logged-in clients, so a connection we can't identify has nothing
+		// to receive. Refusing it here keeps unidentified sockets out of the hub
+		// entirely rather than letting them sit there collecting broadcasts.
+		if (playerId === null) return c.json({ error: 'Unauthorized' }, 401)
+
+		const request = new Request(c.req.raw)
+		// Always set from the validated token, never passed through: the header is the
+		// DO's proof of identity, so a client sending its own must not be believed.
+		request.headers.set(OWNER_HEADER, String(playerId))
+
+		// The upgrade is retried too: it is a bodyless GET, so re-issuing it is free, and a
+		// reset here would otherwise fail the client's connect outright.
+		return hubCall(c, (hub) => hub.fetch(new Request(request)))
+	})
+
+	// ---- Internal service-to-service send/broadcast --------------------------
+	// Lets other workers push notifications through the shared hub. Gated to admin
+	// accounts (see requireAdmin) as a temporary lockdown.
+	.use('/internal/*', requireAdmin)
+
+	.post('/internal/notify', async (c) => {
+		const body = await c.req
+			.json<{
+				playerId?: number
+				notificationType?: string | number
+				data?: Record<string, unknown>
+			}>()
+			.catch(() => null)
+		if (!body || typeof body.playerId !== 'number' || !isNotificationType(body.notificationType)) {
+			return c.json({ error: 'playerId and notificationType are required' }, 400)
+		}
+		const { playerId, notificationType, data } = body
+		const result = await hubCall(c, (hub) => hub.notifyPlayer(playerId, notificationType, data))
+		return c.json({ success: true, ...result })
+	})
+
+	.post('/internal/broadcast', async (c) => {
+		const body = await c.req
+			.json<{ notificationType?: string | number; data?: Record<string, unknown> }>()
+			.catch(() => null)
+		if (!body || !isNotificationType(body.notificationType)) {
+			return c.json({ error: 'notificationType is required' }, 400)
+		}
+		const { notificationType, data } = body
+		const result = await hubCall(c, (hub) => hub.broadcast(notificationType, data))
+		return c.json({ success: true, ...result })
+	})
+
+	// Send a coach/system direct message to every currently-online player.
+	.post('/internal/coach-message-all', async (c) => {
+		const body = await c.req.json<{ messageContent?: string }>().catch(() => null)
+		const content = typeof body?.messageContent === 'string' ? body.messageContent.trim() : ''
+		if (content === '') return c.json({ error: 'messageContent is required' }, 400)
+		const result = await hubCall(c, (hub) => hub.coachMessageAll(content))
+		return c.json({ success: true, ...result })
+	})
+
+	// The targeted form of the broadcast above: one coach message to ONE player.
+	//
+	// Unlike the broadcast, this one is a real message: it is STORED first, so the player
+	// reads it from `GET /api/messages/v2/get` whether or not the hub reached them, and the
+	// frame carries the stored row's id. The broadcast stays unstored — it reaches everyone
+	// online at once, so a row per player would be thousands of writes per maintenance
+	// notice, for something nobody needs to re-read.
+	.post('/internal/coach-message', async (c) => {
+		const body = await c.req
+			.json<{ playerId?: number; messageContent?: string }>()
+			.catch(() => null)
+		const content = typeof body?.messageContent === 'string' ? body.messageContent.trim() : ''
+		if (typeof body?.playerId !== 'number' || !Number.isInteger(body.playerId)) {
+			return c.json({ error: 'playerId is required' }, 400)
+		}
+		if (content === '') return c.json({ error: 'messageContent is required' }, 400)
+
+		const notification = await createNotification(c.env.DB, {
+			FromPlayerId: COACH_PLAYER_ID,
+			ToPlayerId: body.playerId,
+			Type: COACH_MESSAGE_TYPE,
+			Data: content,
+		})
+		const result = await hubCall(c, (hub) => hub.coachMessage(notification))
+		return c.json({ success: true, notificationId: notification.Id, ...result })
+	})
+
+	// Read-only view of the hub's routing state, for working out why a notification
+	// didn't arrive: which connections are live, which players each one receives for,
+	// and what's queued for a player who wasn't reachable.
+	.get('/internal/hub-state', async (c) => {
+		return c.json(await hubCall(c, (hub) => hub.inspect()))
+	})
+
+	// Discard queued notifications, for `?playerId=` or — with the explicit `?all=true`,
+	// so a bare call can't do it by accident — the whole queue. Anything left pending is
+	// delivered on the player's next subscribe, so stale frames need a way out.
+	.delete('/internal/hub-state/pending', async (c) => {
+		const raw = c.req.query('playerId')
+		const playerId = raw === undefined ? undefined : Number.parseInt(raw, 10)
+		if (playerId !== undefined && !Number.isInteger(playerId)) {
+			return c.json({ error: 'playerId must be an integer' }, 400)
+		}
+		if (playerId === undefined && c.req.query('all') !== 'true') {
+			return c.json({ error: 'pass playerId, or all=true to clear every queue' }, 400)
+		}
+
+		const result = await hubCall(c, (hub) => hub.clearPending(playerId))
+		logger.info('cleared pending notifications', { playerId: playerId ?? null, ...result })
+		return c.json({ success: true, ...result })
+	})
+
+export { NotificationsHub }
+export default app

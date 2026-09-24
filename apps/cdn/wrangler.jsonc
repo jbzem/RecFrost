@@ -1,0 +1,61 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "cdn",
+	"main": "src/cdn.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	// Workers Caching is OFF here, and must stay off: it STRIPS the `Range` header before
+	// invoking the worker, asks for the whole body, and slices the 206 out of its own
+	// cache. That works only while the response is actually cacheable — on any bypass
+	// (see the automatic bypass rules) nothing slices, and the client that asked for a
+	// byte range receives the whole object with a 200. A chunked downloader writes that
+	// at the offset it asked for and the reassembled file is corrupt (EAC "Signatures
+	// don't match"). With caching off the `Range` header reaches serveAsset, which
+	// always answers a `bytes=` request with a 206 and a truthful Content-Range.
+	// The cost is that every asset read hits R2; correctness on these blobs is worth it.
+	"cache": {
+		"enabled": true
+	},
+	// The JSON config files in `static/config/`, uploaded as Workers static assets rather
+	// than bundled into the script, so `/config/:name` serves whatever is published there:
+	// adding a config is dropping in a file (a bundled `import` can't do that — the
+	// bundler has to see every path at build time).
+	//
+	// `run_worker_first: true` because these are the WORKER'S data files, not a site.
+	// Without it the runtime answers any request whose path matches an asset before the
+	// Worker runs, which would both publish every config a second time at
+	// `/config/<name>.json` and put asset routing in front of the R2 routes below. With
+	// it, the Worker sees every request and the files are reachable only through
+	// `/config/:name`.
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./static",
+		"run_worker_first": true
+	},
+	// CDN binaries (signature blobs + room build data) are stored as R2 objects
+	// and streamed back by key. Keys are prefixed `sigs/` and `room/`.
+	"r2_buckets": [
+		{
+			"binding": "CDN_ASSETS",
+			"bucket_name": "recflare-cdn"
+		}
+	],
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

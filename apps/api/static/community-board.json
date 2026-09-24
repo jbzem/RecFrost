@@ -1,0 +1,46 @@
+{
+  "FeaturedPlayer": {
+    "Id": 2,
+    "TitleOverride": "Owner of RecFrost",
+    "UrlOverride": null
+  },
+  "FeaturedRoomGroup": {
+    "FeaturedRoomGroupId": 2,
+    "Name": "Featured Rooms",
+    "Rooms": [
+    ]
+  },
+  "CurrentAnnouncement": {
+    "Message": "Welcome to RecFrost!",
+    "MoreInfoUrl": "https://www.bypassedpic.workers.dev"
+  },
+  "InstagramImages": [
+    {
+      "ImageName": "tip.jpg",
+      "ImageUrl": null
+    }
+  ],
+  "Videos": [
+    {
+      "BlobName": "DancingLarry.mp4",
+      "Title": "dancing larry",
+      "Description": "he got moves",
+      "ThumbnailBlobName": "tip.jpg",
+      "SourceUrl": "https://www.youtube.com"
+    },
+    {
+      "BlobName": "yesrico.mp4",
+      "Title": "yes rico kaboom",
+      "Description": "ahhhh help im dying why are you looking at this",
+      "ThumbnailBlobName": "tip.jpg",
+      "SourceUrl": "https://www.tiktok.com/@3facedcitizen/video/7687021913515822358"
+    },
+    {
+      "BlobName": "dancingappbtw.mp4",
+      "Title": "dancing app btw",
+      "Description": "indonesian tech tok brother",
+      "ThumbnailBlobName": "tip.jpg",
+      "SourceUrl": "https://www.google.com"
+    }
+  ]
+}

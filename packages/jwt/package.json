@@ -1,0 +1,21 @@
+{
+	"name": "@repo/jwt",
+	"version": "0.1.0",
+	"private": true,
+	"sideEffects": false,
+	"type": "module",
+	"main": "src/index.ts",
+	"scripts": {
+		"check:lint": "run-oxlint",
+		"check:types": "run-tsc"
+	},
+	"dependencies": {
+		"@repo/domain": "workspace:*",
+		"hono": "4.13.5"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "4.20260630.1",
+		"@repo/tools": "workspace:*",
+		"@repo/typescript-config": "workspace:*"
+	}
+}

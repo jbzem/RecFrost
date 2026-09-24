@@ -1,0 +1,19 @@
+-- The purchase offers a room sells its own currency through — "5 SuperTokens for 500 Rec
+-- Center Tokens" — served by `GET /api/roomcurrencies/v1/getPurchaseOffersBatch?ids=`. Owned
+-- by the `econ` worker; 0017 created the table. Generated from src/room-currency-db.ts
+-- (ROOM_CURRENCY_SCHEMA_DDL, which mirrors the table as it stands after 0017 + 0018 + this)
+-- — keep in sync.
+--
+-- A JSON column rather than a table of its own. Offers are a small, ordered list that is only
+-- ever read, written and replaced AS A WHOLE, for one currency at a time — the client shows
+-- them as that currency's shop and reorders them together. A table would buy per-offer
+-- queries nothing asks for, and cost a join on the one read that matters.
+--
+-- Each offer holds `CurrencyPurchaseOfferId`, `Order`, `Name`, `CurrencyAmount`, `Price` and
+-- `ModifiedAt`. It does NOT hold `CurrencyId`: the row it lives on already says which currency
+-- these are offers for, and the read projects it back in. Storing it would be a second place
+-- for that to be wrong.
+--
+-- NULL, not '[]', for a currency with no offers — a currency nobody has built a shop for has
+-- no list, and the read treats null and an unparseable value alike as "no offers".
+ALTER TABLE room_currency ADD COLUMN purchase_offers TEXT;

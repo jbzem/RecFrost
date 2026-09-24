@@ -1,0 +1,79 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "match",
+	"main": "src/match.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	// Shared `recflare` DB. Reads room scenes for matchmaking, writes a player's
+	// personal dorm room on first dorm entry (see getOrCreateDormRoom), and holds
+	// player presence (the `presence` table — owned/migrated by the `rooms` worker).
+	// This worker owns the `room_invite` table behind POST /invite (schema/migration
+	// here); its own migrations_table keeps that history separate from the other
+	// workers' migrations on the shared database.
+	// The "local" placeholder is replaced with the real id from RECFLARE_D1 at deploy time.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_match"
+		}
+	],
+	// Per-player settings KV, owned by the `playersettings` worker. Read-only here, for
+	// GET /player/avoidjuniors. The "local" id placeholder is replaced with the real id
+	// from RECFLARE_KV at deploy time.
+	"kv_namespaces": [
+		{
+			"binding": "RECFLARE_PLAYER_SETTINGS",
+			"id": "local"
+		}
+	],
+	// Presence sweep. Rows expire on their own TTL (15m) and reads already ignore
+	// expired ones, so this is housekeeping: it purges them, deletes the room
+	// instances left with nobody in them, and recomputes the fullness of the
+	// instances the departed players were in (a crashed player never matchmakes out,
+	// so nothing else notices they left). Every 5 minutes.
+	"triggers": {
+		"crons": ["*/5 * * * *"]
+	},
+	"logpush": false,
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	// The `notify` worker's NotificationsHub DO — used by POST /invite to push the
+	// game-invite message to the invitee's live socket.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	// The operator's knobs — the room substitutions (ROOM_REDIRECTS), the Photon app ids
+	// and region (PHOTON_REALTIME_APP_ID, PHOTON_VOICE_APP_ID, PHOTON_CHAT_APP_ID,
+	// PHOTON_REGION), and the Tachyon server pools (TACHYON_HOST_PORT,
+	// TACHYON_HOST_PORT_SANDBOX) —
+	// are deliberately NOT set here. They're injected at deploy time from
+	// the gitignored .env (RECFLARE_<VAR>, see .env.example), so swapping a room out or
+	// pointing at your own Photon apps never means editing a versioned file. Unset — the
+	// default — means every matchmake enters the room it asked for, the Photon app ids are
+	// empty (recflare ships none of its own), and sessions run in the `us` region.
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

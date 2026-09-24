@@ -1,0 +1,43 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "clubs",
+	"main": "src/clubs.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	// Shared `recflare` DB (created manually with `wrangler d1 create recflare`; the
+	// "local" placeholder is spliced out at deploy time). The `clubs` worker owns the
+	// `club` / `club_member` tables (schema/migration here); its own migrations_table
+	// keeps history separate from the other workers' migrations on the shared database.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations",
+			"migrations_table": "d1_migrations_clubs"
+		}
+	],
+	"logpush": false,
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	// The per-account cap (MAX_CLUBS_PER_ACCOUNT) is deliberately NOT set here. It's
+	// injected at deploy time from the gitignored .env (RECFLARE_MAX_CLUBS_PER_ACCOUNT, see
+	// .env.example), so tuning it never means editing a versioned file. Unset — the
+	// default — falls back to DEFAULT_MAX_CLUBS_PER_ACCOUNT in src/clubs.app.ts.
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}

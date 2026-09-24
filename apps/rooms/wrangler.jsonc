@@ -1,0 +1,72 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "rooms",
+	"main": "src/rooms.app.ts",
+	"compatibility_date": "2026-06-16",
+	"compatibility_flags": ["nodejs_compat"],
+	// Shared `recflare` DB (room storage lives here). Create it manually with
+	// `wrangler d1 create recflare`, then put the real id in the gitignored root
+	// .env under RECFLARE_D1 (see .env.example) — it is spliced in at deploy time
+	// by run-wrangler-deploy. The "local" placeholder below is only a key for the
+	// local SQLite db used by `wrangler dev`, so the committed file needs no
+	// per-developer edits. Apply migrations with
+	// `wrangler d1 migrations apply recflare --remote`.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "recflare",
+			"database_id": "local",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Shared `recflare-cdn` R2 bucket (also bound by the `cdn`/`storage` workers).
+	// Room images/files live here under `room/`; bound so deleting a room removes its
+	// image object. bucket_name is a literal, so nothing is spliced at deploy time.
+	"r2_buckets": [
+		{
+			"binding": "CDN_ASSETS",
+			"bucket_name": "recflare-cdn"
+		}
+	],
+	// Cross-worker binding to the SignalR notifications hub DO (owned/migrated by
+	// the `notify` worker). We only invoke its RPC methods; no migration here.
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "RECFLARE_NOTIFICATIONS_HUB",
+				"class_name": "NotificationsHub",
+				"script_name": "notify"
+			}
+		]
+	},
+	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
+	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
+	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
+	"secrets_store_secrets": [
+		{
+			"binding": "JWT_SECRET",
+			"store_id": "local",
+			"secret_name": "JWT_SECRET"
+		}
+	],
+	// Housekeeping sweep, every 5 minutes. Drops `room_vote` ballots (owned by `api`,
+	// append-only; a vote is open for 60s and the caller cooldown looks back 5 minutes,
+	// so nothing reads an older ballot) and `room_invite` rows (owned by `match`; an
+	// invite is redeemable for 5 minutes, after which the missing row IS the expiry)
+	// older than 5 minutes.
+	"triggers": {
+		"crons": ["*/5 * * * *"]
+	},
+	"upload_source_maps": true,
+	"observability": {
+		"enabled": false
+	},
+	// The per-account cap (MAX_ROOMS_PER_ACCOUNT) is deliberately NOT set here. It's
+	// injected at deploy time from the gitignored .env (RECFLARE_MAX_ROOMS_PER_ACCOUNT, see
+	// .env.example), so tuning it never means editing a versioned file. Unset — the
+	// default — falls back to DEFAULT_MAX_ROOMS_PER_ACCOUNT in src/rooms.app.ts.
+	"vars": {
+		"ENVIRONMENT": "development", // overridden during deployment
+		"SENTRY_RELEASE": "unknown" // overridden during deployment
+	}
+}
