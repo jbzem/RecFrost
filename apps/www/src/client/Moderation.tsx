@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { KickReportCategory } from '../../../notify/src/notification-payloads'
-import { accountIdForUsername, call, isAdmin, useAction, usernamesFor } from './api'
+import { accountIdForUsername, call, isAdmin, isDeveloper, useAction, usernamesFor } from './api'
 
 import type { PublicAccount } from './api'
 
@@ -24,7 +24,7 @@ import type { PublicAccount } from './api'
  */
 
 /** What the panel is showing. The player history is a drill-down from any of them. */
-type Tab = 'queue' | 'search' | 'bans' | 'new'
+type Tab = 'queue' | 'search' | 'bans' | 'new' | 'gifts'
 
 const TABS: Array<{ id: Tab; label: string }> = [
 	// Queue first: "who is a problem right now" is the question someone opens this page
@@ -33,6 +33,9 @@ const TABS: Array<{ id: Tab; label: string }> = [
 	{ id: 'search', label: 'Search reports' },
 	{ id: 'bans', label: 'Standing bans' },
 	{ id: 'new', label: 'File a report' },
+	// Gifts last and developers only: they create value from nothing, so the tab is
+	// hidden for everyone else (the endpoints enforce it too, via requireDeveloper).
+	{ id: 'gifts', label: 'Staff gifts' },
 ]
 
 const TAB_IDS = new Set<string>(TABS.map((t) => t.id))
@@ -366,7 +369,7 @@ export function ModerationPage({
 			) : (
 				<div className="workspace">
 					<nav className="vtabs">
-						{TABS.map((t) => (
+						{TABS.filter((t) => t.id !== 'gifts' || isDeveloper()).map((t) => (
 							<button
 								key={t.id}
 								className={t.id === view.tab ? 'active' : ''}
@@ -395,7 +398,7 @@ export function ModerationPage({
 							/>
 						) : view.tab === 'bans' ? (
 							<StandingBans revision={revision} onOpenPlayer={openPlayer} onChanged={changed} />
-						) : (
+						) : view.tab === 'new' ? (
 							// Filing a report navigates straight to the ban dialog for it — filing one
 							// is almost always the first half of banning somebody, and the new report's
 							// id is then in the URL, so the ban is a real page rather than a modal that
@@ -406,6 +409,8 @@ export function ModerationPage({
 								initialPlayer={new URLSearchParams(search).get('player') ?? ''}
 								onFiled={openBan}
 							/>
+						) : (
+							<StaffGifts />
 						)}
 					</div>
 				</div>
@@ -1435,6 +1440,254 @@ function BanDialog({ reportId, navigate }: { reportId: number; navigate: (to: st
 						Cancel
 					</button>
 				</div>
+			</form>
+		</section>
+	)
+}
+
+/**
+ * Staff gifts, at `/moderation/gifts` — developers only.
+ *
+ * The tab button is hidden for everyone else, and this guards again: the gift
+ * endpoints create value from nothing, so they enforce `requireDeveloper` no
+ * matter what the page shows. Amounts follow the server's rules (tokens take a
+ * whole number either way up to the operator cap; XP is positive only; the
+ * server-wide drop needs a message), and the server's refusal is what the form
+ * reports — no duplicating its limits here.
+ */
+function StaffGifts() {
+	if (!isDeveloper()) {
+		return (
+			<section className="card">
+				<h2>Staff gifts</h2>
+				<p className="muted">
+					Gifts create value from nothing, so they are developers only. Your account
+					doesn&apos;t have the developer role.
+				</p>
+			</section>
+		)
+	}
+	return (
+		<>
+			<PlayerGiftForm />
+			<RoomGiftForm />
+			<OnlineDropForm />
+		</>
+	)
+}
+
+type GiftReply = {
+	playerId?: number
+	amount?: number
+	balance?: number
+	giftId?: number
+	level?: number
+	xp?: number
+	levelsGained?: number
+	kind?: string
+	roomId?: number
+	paid?: number[]
+	skipped?: number[]
+	message?: string
+}
+
+/** One player, one gift: tokens (either direction), XP, or an item by id. */
+function PlayerGiftForm() {
+	const [player, setPlayer] = useState('')
+	const [kind, setKind] = useState('tokens')
+	const [value, setValue] = useState('')
+	const [message, setMessage] = useState('')
+	const { pending, error, done, run } = useAction()
+
+	return (
+		<section className="card">
+			<h2>Gift a player</h2>
+			<p className="muted">
+				Tokens take a whole number either way — negative takes back, within what they
+				hold. XP is positive only. An item takes a custom-item GUID, a skin or
+				consumable key, or a catalog id. Every gift mints a box the player opens.
+			</p>
+			<form
+				onSubmit={(e) => {
+					e.preventDefault()
+					void run(async () => {
+						const playerId = await playerIdFrom(player)
+						const path =
+							kind === 'tokens'
+								? `/api/staff/players/${playerId}/gift-tokens`
+								: kind === 'xp'
+									? `/api/staff/players/${playerId}/gift-xp`
+									: `/api/staff/players/${playerId}/gift-item`
+						const body =
+							kind === 'item'
+								? { itemId: value.trim(), message: message.trim() || undefined }
+								: { amount: Number(value), message: message.trim() || undefined }
+						const res = await call<GiftReply>(path, { authed: true, json: body })
+						if (kind === 'tokens')
+							return `Sent ${res.amount} tokens to #${res.playerId} — balance ${res.balance?.toLocaleString() ?? '?'}.`
+						if (kind === 'xp')
+							return `Sent ${res.amount} XP to #${res.playerId} — now level ${res.level ?? '?'} (${res.levelsGained ?? 0} gained).`
+						return `Sent a ${res.kind ?? 'item'} to #${res.playerId}.`
+					})
+				}}
+			>
+				<label>
+					Player
+					<input
+						value={player}
+						placeholder="@name or id"
+						required
+						onChange={(e) => setPlayer(e.target.value)}
+					/>
+				</label>
+				<label>
+					Gift
+					<select value={kind} onChange={(e) => setKind(e.target.value)}>
+						<option value="tokens">Tokens</option>
+						<option value="xp">XP</option>
+						<option value="item">Item</option>
+					</select>
+				</label>
+				<label>
+					{kind === 'item' ? 'Item id' : 'Amount'}
+					<input
+						value={value}
+						placeholder={kind === 'item' ? 'GUID, catalog key, or id' : 'e.g. 1000 or -500'}
+						required
+						onChange={(e) => setValue(e.target.value)}
+					/>
+				</label>
+				<label>
+					Message (optional)
+					<input
+						value={message}
+						placeholder="Shown on the gift box"
+						onChange={(e) => setMessage(e.target.value)}
+					/>
+				</label>
+				{error && <p className="error">{error}</p>}
+				{done && <p className="muted">{done}</p>}
+				<button type="submit" disabled={pending}>
+					{pending ? 'Sending…' : 'Send gift'}
+				</button>
+			</form>
+		</section>
+	)
+}
+
+/** Tokens to everyone standing in one room right now. */
+function RoomGiftForm() {
+	const [roomId, setRoomId] = useState('')
+	const [amount, setAmount] = useState('')
+	const [message, setMessage] = useState('')
+	const { pending, error, done, run } = useAction()
+
+	return (
+		<section className="card">
+			<h2>Gift a room</h2>
+			<p className="muted">
+				Pays every player in the room, across its instances, one after another. A
+				player a negative amount can&apos;t be taken from is skipped, not failed.
+			</p>
+			<form
+				onSubmit={(e) => {
+					e.preventDefault()
+					void run(async () => {
+						const res = await call<GiftReply>(`/api/staff/rooms/${roomId.trim()}/gift-tokens`, {
+							authed: true,
+							json: { amount: Number(amount), message: message.trim() || undefined },
+						})
+						const paid = res.paid?.length ?? 0
+						const skipped = res.skipped?.length ?? 0
+						return `Room #${res.roomId}: paid ${paid}, skipped ${skipped}.`
+					})
+				}}
+			>
+				<label>
+					Room id
+					<input
+						value={roomId}
+						placeholder="e.g. 2"
+						required
+						onChange={(e) => setRoomId(e.target.value)}
+					/>
+				</label>
+				<label>
+					Amount
+					<input
+						value={amount}
+						placeholder="Whole number, either direction"
+						required
+						onChange={(e) => setAmount(e.target.value)}
+					/>
+				</label>
+				<label>
+					Message (optional)
+					<input
+						value={message}
+						placeholder="Shown on the gift box"
+						onChange={(e) => setMessage(e.target.value)}
+					/>
+				</label>
+				{error && <p className="error">{error}</p>}
+				{done && <p className="muted">{done}</p>}
+				<button type="submit" disabled={pending}>
+					{pending ? 'Sending…' : 'Gift room'}
+				</button>
+			</form>
+		</section>
+	)
+}
+
+/** Tokens to everyone online — the big, careful one. */
+function OnlineDropForm() {
+	const [amount, setAmount] = useState('')
+	const [message, setMessage] = useState('')
+	const { pending, error, done, run } = useAction()
+
+	return (
+		<section className="card">
+			<h2>Token drop</h2>
+			<p className="muted">
+				Pays everyone online at once. Positive only, capped per player, and the message
+				is required — it&apos;s what the players actually see. There is no taking a
+				drop back.
+			</p>
+			<form
+				onSubmit={(e) => {
+					e.preventDefault()
+					void run(async () => {
+						const res = await call<GiftReply>('/api/staff/online/gift-tokens', {
+							authed: true,
+							json: { amount: Number(amount), message: message.trim() || undefined },
+						})
+						return `Dropped ${res.amount} tokens on ${res.paid?.length ?? 0} players.`
+					})
+				}}
+			>
+				<label>
+					Amount per player
+					<input
+						value={amount}
+						placeholder="Whole number greater than 0"
+						required
+						onChange={(e) => setAmount(e.target.value)}
+					/>
+				</label>
+				<label>
+					Message (required)
+					<input
+						value={message}
+						placeholder="Shown on every gift box"
+						required
+						onChange={(e) => setMessage(e.target.value)}
+					/>
+				</label>
+				{error && <p className="error">{error}</p>}
+				{done && <p className="muted">{done}</p>}
+				<button type="submit" disabled={pending}>
+					{pending ? 'Dropping…' : 'Drop tokens'}
+				</button>
 			</form>
 		</section>
 	)
