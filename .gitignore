@@ -52,3 +52,5 @@ yarn-error.log*
 .idea
 
 # Local deploy logs
+deploy-all.log
+deploy-six.log
