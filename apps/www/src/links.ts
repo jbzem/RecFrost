@@ -38,8 +38,8 @@ export const PRIVACY_EMAIL: string = 'privacy@recflare.net'
 
 /**
  * RecFrost PC download mirrors behind the homepage "Download for PC" menu
- * (App.tsx). TODO(operator): paste the real Gofile/Google Drive URLs — empty
- * until set, and the buttons go nowhere while they are.
+ * (App.tsx).
  */
-export const PC_DOWNLOAD_GOFILE = ''
-export const PC_DOWNLOAD_DRIVE = ''
+export const PC_DOWNLOAD_GOFILE = 'https://gofile.io/d/8581832a-e1e4-458b-877a-0b385f27dc49'
+export const PC_DOWNLOAD_DRIVE =
+	'https://drive.google.com/file/d/1wDC_OpryoXW90zadFah8i7iI4rvYlNT7/view?usp=sharing'
