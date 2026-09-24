@@ -135,7 +135,7 @@ if [ "$CONFIG" = "wrangler.jsonc" ] && { [ -n "$NEEDS_D1" ] || [ -n "$NEEDS_KV" 
 		# Map binding name -> id, then replace each kv_namespaces `"id": "local"`
 		# with the id for its nearest preceding "binding" line. awk keeps state so
 		# multiple namespaces in one file each get the right id.
-		KV_PAIRS=$(printf '%s' "$KV_JSON" | jq -r 'to_entries[] | "\(.key)\t\(.value)"')
+		KV_PAIRS=$(printf '%s' "$KV_JSON" | jq -r 'to_entries[] | "\(.key)\t\(.value)"' | tr -d '\r')
 		awk -v pairs="$KV_PAIRS" '
 			BEGIN {
 				n = split(pairs, lines, "\n")
