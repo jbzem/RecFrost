@@ -1517,14 +1517,14 @@ function BanDialog({ reportId, navigate }: { reportId: number; navigate: (to: st
 	)
 }
 /**
- * Staff gifts, at `/moderation/gifts` ÔÇö developers only.
+ * Staff gifts, at `/moderation/gifts` â€” developers only.
  *
  * The tab button is hidden for everyone else, and this guards again: the gift
  * endpoints create value from nothing, so they enforce `requireDeveloper` no
  * matter what the page shows. Amounts follow the server's rules (tokens take a
  * whole number either way up to the operator cap; XP is positive only; the
  * server-wide drop needs a message), and the server's refusal is what the form
- * reports ÔÇö no duplicating its limits here.
+ * reports â€” no duplicating its limits here.
  */
 function StaffGifts() {
 	if (!isDeveloper()) {
@@ -1574,7 +1574,7 @@ function PlayerGiftForm() {
 		<section className="card">
 			<h2>Gift a player</h2>
 			<p className="muted">
-				Tokens take a whole number either way ÔÇö negative takes back, within what they
+				Tokens take a whole number either way â€” negative takes back, within what they
 				hold. XP is positive only. An item takes a custom-item GUID, a skin or
 				consumable key, or a catalog id. Every gift mints a box the player opens.
 			</p>
@@ -1595,9 +1595,9 @@ function PlayerGiftForm() {
 								: { amount: Number(value), message: message.trim() || undefined }
 						const res = await call<GiftReply>(path, { authed: true, json: body })
 						if (kind === 'tokens')
-							return `Sent ${res.amount} tokens to #${res.playerId} ÔÇö balance ${res.balance?.toLocaleString() ?? '?'}.`
+							return `Sent ${res.amount} tokens to #${res.playerId} â€” balance ${res.balance?.toLocaleString() ?? '?'}.`
 						if (kind === 'xp')
-							return `Sent ${res.amount} XP to #${res.playerId} ÔÇö now level ${res.level ?? '?'} (${res.levelsGained ?? 0} gained).`
+							return `Sent ${res.amount} XP to #${res.playerId} â€” now level ${res.level ?? '?'} (${res.levelsGained ?? 0} gained).`
 						return `Sent a ${res.kind ?? 'item'} to #${res.playerId}.`
 					})
 				}}
@@ -1639,7 +1639,7 @@ function PlayerGiftForm() {
 				{error && <p className="error">{error}</p>}
 				{done && <p className="muted">{done}</p>}
 				<button type="submit" disabled={pending}>
-					{pending ? 'SendingÔÇª' : 'Send gift'}
+					{pending ? 'Sendingâ€¦' : 'Send gift'}
 				</button>
 			</form>
 		</section>
@@ -1703,14 +1703,14 @@ function RoomGiftForm() {
 				{error && <p className="error">{error}</p>}
 				{done && <p className="muted">{done}</p>}
 				<button type="submit" disabled={pending}>
-					{pending ? 'SendingÔÇª' : 'Gift room'}
+					{pending ? 'Sendingâ€¦' : 'Gift room'}
 				</button>
 			</form>
 		</section>
 	)
 }
 
-/** Tokens to everyone online ÔÇö the big, careful one. */
+/** Tokens to everyone online â€” the big, careful one. */
 function OnlineDropForm() {
 	const [amount, setAmount] = useState('')
 	const [message, setMessage] = useState('')
@@ -1721,7 +1721,7 @@ function OnlineDropForm() {
 			<h2>Token drop</h2>
 			<p className="muted">
 				Pays everyone online at once. Positive only, capped per player, and the message
-				is required ÔÇö it&apos;s what the players actually see. There is no taking a
+				is required â€” it&apos;s what the players actually see. There is no taking a
 				drop back.
 			</p>
 			<form
@@ -1757,7 +1757,7 @@ function OnlineDropForm() {
 				{error && <p className="error">{error}</p>}
 				{done && <p className="muted">{done}</p>}
 				<button type="submit" disabled={pending}>
-					{pending ? 'DroppingÔÇª' : 'Drop tokens'}
+					{pending ? 'Droppingâ€¦' : 'Drop tokens'}
 				</button>
 			</form>
 		</section>
