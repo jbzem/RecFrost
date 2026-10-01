@@ -1,251 +1,283 @@
 === [1/3] www vite build ===
 [36mvite v6.4.3 [32mbuilding SSR bundle for production...[36m[39m
 transforming...
-[32m✓[39m 194 modules transformed.
+[32m✓[39m 197 modules transformed.
 rendering chunks...
 [2mdist/www/[22m[32m.vite/manifest.json  [39m[1m[2m  0.16 kB[22m[1m[22m
-[2mdist/www/[22m[32mwrangler.json        [39m[1m[2m  2.38 kB[22m[1m[22m
-[2mdist/www/[22m[36mindex.js             [39m[1m[2m315.35 kB[22m[1m[22m
-[32m✓ built in 824ms[39m
+[2mdist/www/[22m[32mwrangler.json        [39m[1m[2m  2.48 kB[22m[1m[22m
+[2mdist/www/[22m[36mindex.js             [39m[1m[2m326.58 kB[22m[1m[22m
+[32m✓ built in 846ms[39m
 [36mvite v6.4.3 [32mbuilding for production...[36m[39m
 transforming...
 [32m✓[39m 38 modules transformed.
 rendering chunks...
 computing gzip size...
 [2mdist/client/[22m[32m.assetsignore              [39m[1m[2m    0.02 kB[22m[1m[22m
-[2mdist/client/[22m[32mindex.html                 [39m[1m[2m    2.42 kB[22m[1m[22m[2m │ gzip:  1.04 kB[22m
+[2mdist/client/[22m[32mindex.html                 [39m[1m[2m    2.42 kB[22m[1m[22m[2m │ gzip:  1.05 kB[22m
 [2mdist/client/[22m[32mdocs/scalar.standalone.js  [39m[1m[2m3,736.90 kB[22m[1m[22m
 [2mdist/client/[22m[35massets/index-Dhdc0nWp.css  [39m[1m[2m   14.64 kB[22m[1m[22m[2m │ gzip:  3.59 kB[22m
-[2mdist/client/[22m[36massets/index-BtUa2Ruz.js   [39m[1m[2m  260.96 kB[22m[1m[22m[2m │ gzip: 79.64 kB[22m
-[32m✓ built in 894ms[39m
+[2mdist/client/[22m[36massets/index-B53CHBjV.js   [39m[1m[2m  267.14 kB[22m[1m[22m[2m │ gzip: 81.20 kB[22m
+[32m✓ built in 929ms[39m
 === [2/3] D1 migrations (remote) ===
 --- migrate api ---
 
- ⛅️ wrangler 4.128.0
-────────────────────
-Resource location: remote 
-
-Migrations to be applied:
-┌────────────────────────────────┐
-│ name                           │
-├────────────────────────────────┤
-│ 0023_room_vote.sql             │
-├────────────────────────────────┤
-│ 0024_audit_log.sql             │
-├────────────────────────────────┤
-│ 0025_report_chat_message.sql   │
-├────────────────────────────────┤
-│ 0026_room_vote_init.sql        │
-├────────────────────────────────┤
-│ 0027_invention_feed_newest.sql │
-├────────────────────────────────┤
-│ 0028_event_id_seq.sql          │
-└────────────────────────────────┘
-? About to apply 6 migration(s)
-Your database may not be available to serve requests during the migration, continue?
-🤖 Using fallback value in non-interactive context: yes
-🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
-🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
-🚣 Executed 3 commands in 0.44ms
-┌────────────────────────────────┬────────┐
-│ name                           │ status │
-├────────────────────────────────┼────────┤
-│ 0023_room_vote.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0024_audit_log.sql             │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0025_report_chat_message.sql   │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0026_room_vote_init.sql        │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0027_invention_feed_newest.sql │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0028_event_id_seq.sql          │ 🕒️    │
-└────────────────────────────────┴────────┘
-🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
-🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
-🚣 Executed 4 commands in 2.52ms
-┌────────────────────────────────┬────────┐
-│ name                           │ status │
-├────────────────────────────────┼────────┤
-│ 0023_room_vote.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0024_audit_log.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0025_report_chat_message.sql   │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0026_room_vote_init.sql        │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0027_invention_feed_newest.sql │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0028_event_id_seq.sql          │ 🕒️    │
-└────────────────────────────────┴────────┘
-🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
-🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
-🚣 Executed 2 commands in 1.35ms
-┌────────────────────────────────┬────────┐
-│ name                           │ status │
-├────────────────────────────────┼────────┤
-│ 0023_room_vote.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0024_audit_log.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0025_report_chat_message.sql   │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0026_room_vote_init.sql        │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0027_invention_feed_newest.sql │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0028_event_id_seq.sql          │ 🕒️    │
-└────────────────────────────────┴────────┘
-🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
-🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
-🚣 Executed 4 commands in 1.56ms
-┌────────────────────────────────┬────────┐
-│ name                           │ status │
-├────────────────────────────────┼────────┤
-│ 0023_room_vote.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0024_audit_log.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0025_report_chat_message.sql   │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0026_room_vote_init.sql        │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0027_invention_feed_newest.sql │ 🕒️    │
-├────────────────────────────────┼────────┤
-│ 0028_event_id_seq.sql          │ 🕒️    │
-└────────────────────────────────┴────────┘
-🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
-🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
-🚣 Executed 2 commands in 2.43ms
-┌────────────────────────────────┬────────┐
-│ name                           │ status │
-├────────────────────────────────┼────────┤
-│ 0023_room_vote.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0024_audit_log.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0025_report_chat_message.sql   │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0026_room_vote_init.sql        │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0027_invention_feed_newest.sql │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0028_event_id_seq.sql          │ 🕒️    │
-└────────────────────────────────┴────────┘
-🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
-🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
-🚣 Executed 3 commands in 0.58ms
-┌────────────────────────────────┬────────┐
-│ name                           │ status │
-├────────────────────────────────┼────────┤
-│ 0023_room_vote.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0024_audit_log.sql             │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0025_report_chat_message.sql   │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0026_room_vote_init.sql        │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0027_invention_feed_newest.sql │ ✅     │
-├────────────────────────────────┼────────┤
-│ 0028_event_id_seq.sql          │ ✅     │
-└────────────────────────────────┴────────┘
---- migrate auth ---
-
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 Migrations to be applied:
-┌────────────────────────────────┐
-│ name                           │
-├────────────────────────────────┤
-│ 0010_platform_account_role.sql │
-└────────────────────────────────┘
-? About to apply 1 migration(s)
+┌───────────────────────────────────────┐
+│ name                                  │
+├───────────────────────────────────────┤
+│ 0029_report_ban_lifted.sql            │
+├───────────────────────────────────────┤
+│ 0030_relationship_friend_index.sql    │
+├───────────────────────────────────────┤
+│ 0031_relationship_unique_index.sql    │
+├───────────────────────────────────────┤
+│ 0032_custom_avatar_item_price_cap.sql │
+├───────────────────────────────────────┤
+│ 0033_invention_price_cap.sql          │
+└───────────────────────────────────────┘
+? About to apply 5 migration(s)
 Your database may not be available to serve requests during the migration, continue?
 🤖 Using fallback value in non-interactive context: yes
 🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
 🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
-🚣 Executed 2 commands in 1.56ms
-┌────────────────────────────────┬────────┐
-│ name                           │ status │
-├────────────────────────────────┼────────┤
-│ 0010_platform_account_role.sql │ ✅     │
-└────────────────────────────────┴────────┘
+🚣 Executed 4 commands in 3.20ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0029_report_ban_lifted.sql            │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0030_relationship_friend_index.sql    │ 🕒️    │
+├───────────────────────────────────────┼────────┤
+│ 0031_relationship_unique_index.sql    │ 🕒️    │
+├───────────────────────────────────────┼────────┤
+│ 0032_custom_avatar_item_price_cap.sql │ 🕒️    │
+├───────────────────────────────────────┼────────┤
+│ 0033_invention_price_cap.sql          │ 🕒️    │
+└───────────────────────────────────────┴────────┘
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 4 commands in 2.18ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0029_report_ban_lifted.sql            │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0030_relationship_friend_index.sql    │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0031_relationship_unique_index.sql    │ 🕒️    │
+├───────────────────────────────────────┼────────┤
+│ 0032_custom_avatar_item_price_cap.sql │ 🕒️    │
+├───────────────────────────────────────┼────────┤
+│ 0033_invention_price_cap.sql          │ 🕒️    │
+└───────────────────────────────────────┴────────┘
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 4 commands in 0.93ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0029_report_ban_lifted.sql            │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0030_relationship_friend_index.sql    │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0031_relationship_unique_index.sql    │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0032_custom_avatar_item_price_cap.sql │ 🕒️    │
+├───────────────────────────────────────┼────────┤
+│ 0033_invention_price_cap.sql          │ 🕒️    │
+└───────────────────────────────────────┴────────┘
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 2 commands in 0.97ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0029_report_ban_lifted.sql            │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0030_relationship_friend_index.sql    │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0031_relationship_unique_index.sql    │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0032_custom_avatar_item_price_cap.sql │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0033_invention_price_cap.sql          │ 🕒️    │
+└───────────────────────────────────────┴────────┘
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 2 commands in 2.47ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0029_report_ban_lifted.sql            │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0030_relationship_friend_index.sql    │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0031_relationship_unique_index.sql    │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0032_custom_avatar_item_price_cap.sql │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0033_invention_price_cap.sql          │ ✅     │
+└───────────────────────────────────────┴────────┘
+--- migrate auth ---
+
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+✅ No migrations to apply!
 --- migrate chat ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 ✅ No migrations to apply!
 --- migrate clubs ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 ✅ No migrations to apply!
 --- migrate econ ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
-✅ No migrations to apply!
+Migrations to be applied:
+┌──────────────────────────┐
+│ name                     │
+├──────────────────────────┤
+│ 0024_room_key.sql        │
+├──────────────────────────┤
+│ 0025_room_key_player.sql │
+└──────────────────────────┘
+? About to apply 2 migration(s)
+Your database may not be available to serve requests during the migration, continue?
+🤖 Using fallback value in non-interactive context: yes
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 3 commands in 0.80ms
+┌──────────────────────────┬────────┐
+│ name                     │ status │
+├──────────────────────────┼────────┤
+│ 0024_room_key.sql        │ ✅     │
+├──────────────────────────┼────────┤
+│ 0025_room_key_player.sql │ 🕒️    │
+└──────────────────────────┴────────┘
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 3 commands in 0.68ms
+┌──────────────────────────┬────────┐
+│ name                     │ status │
+├──────────────────────────┼────────┤
+│ 0024_room_key.sql        │ ✅     │
+├──────────────────────────┼────────┤
+│ 0025_room_key_player.sql │ ✅     │
+└──────────────────────────┴────────┘
 --- migrate img ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 ✅ No migrations to apply!
 --- migrate leaderboard ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 ✅ No migrations to apply!
 --- migrate lists ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 ✅ No migrations to apply!
 --- migrate match ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 ✅ No migrations to apply!
 --- migrate roomcomments ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
 ✅ No migrations to apply!
 --- migrate rooms ---
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Resource location: remote 
 
-✅ No migrations to apply!
+Migrations to be applied:
+┌───────────────────────────────────────┐
+│ name                                  │
+├───────────────────────────────────────┤
+│ 0020_playerdata.sql                   │
+├───────────────────────────────────────┤
+│ 0021_interaction_room_index.sql       │
+├───────────────────────────────────────┤
+│ 0022_room_instance_unique_indexes.sql │
+└───────────────────────────────────────┘
+? About to apply 3 migration(s)
+Your database may not be available to serve requests during the migration, continue?
+🤖 Using fallback value in non-interactive context: yes
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 2 commands in 0.54ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0020_playerdata.sql                   │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0021_interaction_room_index.sql       │ 🕒️    │
+├───────────────────────────────────────┼────────┤
+│ 0022_room_instance_unique_indexes.sql │ 🕒️    │
+└───────────────────────────────────────┴────────┘
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 2 commands in 0.43ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0020_playerdata.sql                   │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0021_interaction_room_index.sql       │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0022_room_instance_unique_indexes.sql │ 🕒️    │
+└───────────────────────────────────────┴────────┘
+🌀 Executing on remote database recflare (790b644f-7c81-4ba8-a30e-73922d92d93c):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 5 commands in 0.60ms
+┌───────────────────────────────────────┬────────┐
+│ name                                  │ status │
+├───────────────────────────────────────┼────────┤
+│ 0020_playerdata.sql                   │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0021_interaction_room_index.sql       │ ✅     │
+├───────────────────────────────────────┼────────┤
+│ 0022_room_instance_unique_indexes.sql │ ✅     │
+└───────────────────────────────────────┴────────┘
 === [3/3] worker deploys ===
 --- deploy accounts ---
-Deploying worker accounts version 0.14.11-7984c94 to accounts.recfrost.workers.dev
+Deploying worker accounts version 0.14.11-bddf667 to accounts.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 494.28 KiB / gzip: 116.18 KiB
-Worker Startup Time: 29 ms
+Worker Startup Time: 33 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub, defined in notify)                Durable Object            
@@ -267,27 +299,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded accounts (7.16 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded accounts (8.55 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `accounts.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed accounts triggers (2.73 sec)
-  accounts.recfrost.workers.dev (custom domain)
-Current Version ID: 655bade1-9384-4ee8-b596-9286e641407d
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-27-29_894.log"
+*** deploy accounts FAILED ***
 --- deploy ai ---
-Deploying worker ai version 0.1.0-7984c94 to ai.recfrost.workers.dev
+Deploying worker ai version 0.1.0-bddf667 to ai.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 394.13 KiB / gzip: 89.73 KiB
-Worker Startup Time: 25 ms
+Worker Startup Time: 43 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
@@ -307,26 +334,21 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded ai (6.92 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded ai (13.24 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `ai.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed ai triggers (2.69 sec)
-  ai.recfrost.workers.dev (custom domain)
-Current Version ID: a54e90c4-0382-4826-919d-ace4db08e970
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-27-45_375.log"
+*** deploy ai FAILED ***
 --- deploy api ---
-Deploying worker api version 6.1.3-7984c94 to api.recfrost.workers.dev
+Deploying worker api version 6.1.3-bddf667 to api.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 1038.18 KiB / gzip: 247.10 KiB
+Total Upload: 1045.18 KiB / gzip: 248.76 KiB
 
 [31mX [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/214c62591d20f4049bfc6a766f55d865/r2/buckets/recflare-img) failed.[0m
 
@@ -335,15 +357,15 @@ Total Upload: 1038.18 KiB / gzip: 247.10 KiB
   If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
 
 
-🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_21-20-31_605.log"
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-28-06_298.log"
 *** deploy api FAILED ***
 --- deploy auth ---
-Deploying worker auth version 1.6.23-7984c94 to auth.recfrost.workers.dev
+Deploying worker auth version 1.6.23-bddf667 to auth.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 428.10 KiB / gzip: 102.00 KiB
-Worker Startup Time: 29 ms
+Total Upload: 429.47 KiB / gzip: 102.37 KiB
+Worker Startup Time: 28 ms
 Your Worker has access to the following bindings:
 Binding                                                                                  Resource                  
 env.DB (recflare)                                                                        D1 Database               
@@ -365,27 +387,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                     Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                         Environment Variable      
 
-Uploaded auth (6.34 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded auth (44.86 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `auth.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed auth triggers (2.89 sec)
-  auth.recfrost.workers.dev (custom domain)
-Current Version ID: 775c5122-d2f6-4c8a-a187-969e03d0397c
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-28-12_403.log"
+*** deploy auth FAILED ***
 --- deploy cards ---
-Deploying worker cards version 0.1.0-7984c94 to cards.recfrost.workers.dev
+Deploying worker cards version 0.1.0-bddf667 to cards.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 355.02 KiB / gzip: 77.12 KiB
-Worker Startup Time: 11 ms
+Worker Startup Time: 10 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
@@ -405,37 +422,24 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded cards (6.13 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded cards (17.02 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `cards.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed cards triggers (3.08 sec)
-  cards.recfrost.workers.dev (custom domain)
-Current Version ID: d23438e1-05f6-4940-9a1d-237d64a7cf7a
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-29-03_062.log"
+*** deploy cards FAILED ***
 --- deploy cdn ---
-Deploying worker cdn version 1.1.1-7984c94 to cdn.recfrost.workers.dev
+Deploying worker cdn version 1.1.1-bddf667 to cdn.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 🌀 Building list of assets...
 ✨ Read 16 files from the assets directory C:\Users\citizen\Desktop\RecFrostDevelopment\Servers\APIServers\RecFrost_Server-MainBranch\apps\cdn\static
 🌀 Starting asset upload...
-🌀 Found 3 new or modified static assets to upload. Proceeding with upload...
-+ /loading-screen-tip-data.json
-+ /config/RRPlusConfig_v3.json
-+ /config/SkuConfig_v1.json
-Uploaded 1 of 3 assets
-Uploaded 2 of 3 assets
-Uploaded 3 of 3 assets
-✨ Success! Uploaded 3 files (11 already uploaded) (1.41 sec)
-
+No updated asset files to upload. Proceeding with deployment...
 Total Upload: 391.01 KiB / gzip: 89.34 KiB
 
 [31mX [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/214c62591d20f4049bfc6a766f55d865/r2/buckets/recflare-cdn) failed.[0m
@@ -445,15 +449,15 @@ Total Upload: 391.01 KiB / gzip: 89.34 KiB
   If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
 
 
-🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_21-21-05_130.log"
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-29-27_159.log"
 *** deploy cdn FAILED ***
 --- deploy chat ---
-Deploying worker chat version 4.31.0-7984c94 to chat.recfrost.workers.dev
+Deploying worker chat version 4.31.0-bddf667 to chat.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 491.78 KiB / gzip: 115.87 KiB
-Worker Startup Time: 37 ms
+Total Upload: 492.25 KiB / gzip: 116.02 KiB
+Worker Startup Time: 30 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub, defined in notify)                Durable Object            
@@ -476,27 +480,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded chat (6.14 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded chat (28.75 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `chat.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed chat triggers (2.80 sec)
-  chat.recfrost.workers.dev (custom domain)
-Current Version ID: 873dffd1-2f75-4464-988b-d47372bed365
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-29-34_188.log"
+*** deploy chat FAILED ***
 --- deploy clubs ---
-Deploying worker clubs version 1.0.85-7984c94 to clubs.recfrost.workers.dev
+Deploying worker clubs version 1.0.85-bddf667 to clubs.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 448.93 KiB / gzip: 102.79 KiB
-Worker Startup Time: 40 ms
+Total Upload: 449.92 KiB / gzip: 102.91 KiB
+Worker Startup Time: 33 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.DB (recflare)                                                                   D1 Database               
@@ -517,27 +516,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded clubs (6.07 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded clubs (23.31 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `clubs.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed clubs triggers (2.63 sec)
-  clubs.recfrost.workers.dev (custom domain)
-Current Version ID: bf68b758-e013-45a0-beba-ce659abb99c7
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-30-09_684.log"
+*** deploy clubs FAILED ***
 --- deploy commerce ---
-Deploying worker commerce version 0.1.0-7984c94 to commerce.recfrost.workers.dev
+Deploying worker commerce version 0.1.0-bddf667 to commerce.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 389.00 KiB / gzip: 87.13 KiB
-Worker Startup Time: 30 ms
+Worker Startup Time: 26 ms
 Your Worker has access to the following bindings:
 Binding                                               Resource                  
 env.ENVIRONMENT ("development")                       Environment Variable      
@@ -556,27 +550,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                   Environment Variable
 env.PHOTON_VOICE_APP_ID ("(hidden)")                  Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                      Environment Variable      
 
-Uploaded commerce (5.70 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded commerce (15.11 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `commerce.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed commerce triggers (2.50 sec)
-  commerce.recfrost.workers.dev (custom domain)
-Current Version ID: 887349c6-4ca2-4213-8a61-b1ec7859e568
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-30-39_250.log"
+*** deploy commerce FAILED ***
 --- deploy datacollection ---
-Deploying worker datacollection version 0.1.0-7984c94 to datacollection.recfrost.workers.dev
+Deploying worker datacollection version 0.1.0-bddf667 to datacollection.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 355.14 KiB / gzip: 77.15 KiB
-Worker Startup Time: 12 ms
+Worker Startup Time: 20 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
@@ -596,40 +585,26 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded datacollection (5.66 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded datacollection (15.11 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `datacollection.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed datacollection triggers (2.71 sec)
-  datacollection.recfrost.workers.dev (custom domain)
-Current Version ID: ca0c2f3d-b4c6-4190-a79c-6f03478c2c4f
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-31-01_257.log"
+*** deploy datacollection FAILED ***
 --- deploy discovery ---
-Deploying worker discovery version 0.1.0-7984c94 to discovery.recfrost.workers.dev
+Deploying worker discovery version 0.1.0-bddf667 to discovery.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 🌀 Building list of assets...
 ✨ Read 11 files from the assets directory C:\Users\citizen\Desktop\RecFrostDevelopment\Servers\APIServers\RecFrost_Server-MainBranch\apps\discovery\static
 🌀 Starting asset upload...
-🌀 Found 4 new or modified static assets to upload. Proceeding with upload...
-+ /StoreClothing.json
-+ /sections.json
-+ /StoreSkins.json
-+ /StoreCategories.json
-Uploaded 1 of 4 assets
-Uploaded 3 of 4 assets
-Uploaded 4 of 4 assets
-✨ Success! Uploaded 4 files (7 already uploaded) (1.30 sec)
-
+No updated asset files to upload. Proceeding with deployment...
 Total Upload: 379.23 KiB / gzip: 85.21 KiB
-Worker Startup Time: 39 ms
+Worker Startup Time: 21 ms
 Your Worker has access to the following bindings:
 Binding                                               Resource                  
 env.ASSETS                                            Assets                    
@@ -649,59 +624,30 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                   Environment Variable
 env.PHOTON_VOICE_APP_ID ("(hidden)")                  Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                      Environment Variable      
 
-Uploaded discovery (9.13 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded discovery (35.26 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `discovery.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed discovery triggers (2.41 sec)
-  discovery.recfrost.workers.dev (custom domain)
-Current Version ID: 58a8168b-0248-42fc-b727-74b19289c192
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-31-22_785.log"
+*** deploy discovery FAILED ***
 --- deploy econ ---
-Deploying worker econ version 1.0.0-7984c94 to econ.recfrost.workers.dev
+Deploying worker econ version 1.0.0-bddf667 to econ.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 🌀 Building list of assets...
 ✨ Read 23 files from the assets directory C:\Users\citizen\Desktop\RecFrostDevelopment\Servers\APIServers\RecFrost_Server-MainBranch\apps\econ\static\storefronts
 🌀 Starting asset upload...
-🌀 Found 23 new or modified static assets to upload. Proceeding with upload...
-+ /sf2000.json
-+ /sf2003.json
-+ /sf401.json
-+ /sf402.json
-+ /sf403.json
-+ /sf101.json
-+ /sf100.json
-+ /sf3.json
-+ /sf2001.json
-+ /sf2004.json
-+ /sf404.json
-+ /sf500.json
-+ /sf2.json
-+ /sf103.json
-+ /sf102.json
+🌀 Found 1 new or modified static asset to upload. Proceeding with upload...
 + /sf3-2025.json
-+ /sf2002.json
-+ /sf406.json
-+ /sf400.json
-+ /sf405.json
-+ /sf600.json
-+ /sf300.json
-+ /sf1.json
-Uploaded 7 of 23 assets
-Uploaded 15 of 23 assets
-Uploaded 23 of 23 assets
-✨ Success! Uploaded 23 files (2.94 sec)
+Uploaded 1 of 1 asset
+✨ Success! Uploaded 1 file (22 already uploaded) (41.82 sec)
 
-Total Upload: 731.64 KiB / gzip: 156.82 KiB
-Worker Startup Time: 47 ms
+Total Upload: 763.95 KiB / gzip: 164.42 KiB
+Worker Startup Time: 45 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub, defined in notify)                Durable Object            
@@ -724,24 +670,19 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded econ (11.49 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded econ (53.40 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `econ.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed econ triggers (2.65 sec)
-  econ.recfrost.workers.dev (custom domain)
-Current Version ID: 8ad050e5-f1fb-44a6-b3ff-33192d315cc7
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-32-03_738.log"
+*** deploy econ FAILED ***
 --- deploy img ---
-Deploying worker img version 3.0.3-7984c94 to img.recfrost.workers.dev
+Deploying worker img version 3.0.3-bddf667 to img.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 🌀 Building list of assets...
 ✨ Read 37 files from the assets directory C:\Users\citizen\Desktop\RecFrostDevelopment\Servers\APIServers\RecFrost_Server-MainBranch\apps\img\static
@@ -756,15 +697,15 @@ Total Upload: 1943.68 KiB / gzip: 708.75 KiB
   If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
 
 
-🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_21-22-40_085.log"
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-33-03_498.log"
 *** deploy img FAILED ***
 --- deploy leaderboard ---
-Deploying worker leaderboard version 0.1.0-7984c94 to leaderboard.recfrost.workers.dev
+Deploying worker leaderboard version 0.1.0-bddf667 to leaderboard.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 393.10 KiB / gzip: 89.42 KiB
-Worker Startup Time: 24 ms
+Worker Startup Time: 27 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.DB (recflare)                                                                   D1 Database               
@@ -785,27 +726,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded leaderboard (6.27 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded leaderboard (23.89 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `leaderboard.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed leaderboard triggers (2.50 sec)
-  leaderboard.recfrost.workers.dev (custom domain)
-Current Version ID: 8e3d6c9b-b1ba-4860-9c4c-97233a5acf8b
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-33-10_433.log"
+*** deploy leaderboard FAILED ***
 --- deploy link ---
-Deploying worker link version 0.1.0-7984c94 to link.recfrost.workers.dev
+Deploying worker link version 0.1.0-bddf667 to link.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 355.02 KiB / gzip: 77.12 KiB
-Worker Startup Time: 11 ms
+Worker Startup Time: 9 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
@@ -825,27 +761,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded link (5.79 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded link (45.78 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `link.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed link triggers (2.95 sec)
-  link.recfrost.workers.dev (custom domain)
-Current Version ID: b1568ca6-f39f-4266-b955-9dd866eff708
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-33-40_902.log"
+*** deploy link FAILED ***
 --- deploy lists ---
-Deploying worker lists version 0.1.0-7984c94 to lists.recfrost.workers.dev
+Deploying worker lists version 0.1.0-bddf667 to lists.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 415.62 KiB / gzip: 97.29 KiB
-Worker Startup Time: 26 ms
+Total Upload: 415.91 KiB / gzip: 97.43 KiB
+Worker Startup Time: 31 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.DB (recflare)                                                                   D1 Database               
@@ -866,27 +797,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded lists (6.06 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded lists (36.89 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `lists.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed lists triggers (2.29 sec)
-  lists.recfrost.workers.dev (custom domain)
-Current Version ID: 76f910e6-3ea4-419b-af08-b47d980b7ac2
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-34-33_415.log"
+*** deploy lists FAILED ***
 --- deploy match ---
-Deploying worker match version 1.2.11-7984c94 to match.recfrost.workers.dev
+Deploying worker match version 1.2.11-bddf667 to match.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 455.66 KiB / gzip: 106.48 KiB
-Worker Startup Time: 44 ms
+Total Upload: 457.43 KiB / gzip: 107.06 KiB
+Worker Startup Time: 35 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub, defined in notify)                Durable Object            
@@ -909,28 +835,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded match (6.26 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded match (31.75 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `match.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed match triggers (2.57 sec)
-  match.recfrost.workers.dev (custom domain)
-  schedule: */5 * * * *
-Current Version ID: 71483da5-933a-4f82-ad22-e2a5be6fcb02
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-35-16_963.log"
+*** deploy match FAILED ***
 --- deploy moderation ---
-Deploying worker moderation version 0.1.0-7984c94 to api.recfrost.workers.dev
+Deploying worker moderation version 0.1.0-bddf667 to api.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 355.08 KiB / gzip: 77.15 KiB
-Worker Startup Time: 13 ms
+Worker Startup Time: 11 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
@@ -950,26 +870,21 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded moderation (5.78 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded moderation (17.54 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `api.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed moderation triggers (2.54 sec)
-  api.recfrost.workers.dev (custom domain)
-Current Version ID: d8aa78f4-af48-4f34-85e3-8a7461c69c47
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-35-55_646.log"
+*** deploy moderation FAILED ***
 --- deploy mono ---
-Deploying worker mono version 0.0.0-7984c94 to mono.recfrost.workers.dev
+Deploying worker mono version 0.0.0-bddf667 to mono.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 1446.37 KiB / gzip: 360.29 KiB
+Total Upload: 1459.39 KiB / gzip: 363.57 KiB
 
 [31mX [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/214c62591d20f4049bfc6a766f55d865/r2/buckets/recflare-img) failed.[0m
 
@@ -978,15 +893,15 @@ Total Upload: 1446.37 KiB / gzip: 360.29 KiB
   If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
 
 
-🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_21-23-52_531.log"
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-36-31_499.log"
 *** deploy mono FAILED ***
 --- deploy notify ---
-Deploying worker notify version 0.1.0-7984c94 to notify.recfrost.workers.dev
+Deploying worker notify version 0.1.0-bddf667 to notify.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 380.95 KiB / gzip: 85.05 KiB
-Worker Startup Time: 13 ms
+Worker Startup Time: 16 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub)                                   Durable Object            
@@ -1008,27 +923,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded notify (7.24 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded notify (19.36 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `notify.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed notify triggers (2.82 sec)
-  notify.recfrost.workers.dev (custom domain)
-Current Version ID: 10d402e3-81b8-41aa-80c3-74ebffb2c625
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-36-48_437.log"
+*** deploy notify FAILED ***
 --- deploy ns ---
-Deploying worker ns version 1.0.2-7984c94 to ns.recfrost.workers.dev
+Deploying worker ns version 1.0.2-bddf667 to ns.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 356.06 KiB / gzip: 77.62 KiB
-Worker Startup Time: 12 ms
+Worker Startup Time: 15 ms
 Your Worker has access to the following bindings:
 Binding                                               Resource                  
 env.ENVIRONMENT ("development")                       Environment Variable      
@@ -1047,27 +957,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                   Environment Variable
 env.PHOTON_VOICE_APP_ID ("(hidden)")                  Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                      Environment Variable      
 
-Uploaded ns (5.90 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded ns (21.24 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `ns.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed ns triggers (2.86 sec)
-  ns.recfrost.workers.dev (custom domain)
-Current Version ID: d88b8c28-0a2a-4ec5-ba11-8e8612839fbb
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-37-20_023.log"
+*** deploy ns FAILED ***
 --- deploy platformnotifications ---
-Deploying worker platformnotifications version 0.1.0-7984c94 to platformnotifications.recfrost.workers.dev
+Deploying worker platformnotifications version 0.1.0-bddf667 to platformnotifications.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 365.55 KiB / gzip: 80.60 KiB
-Worker Startup Time: 14 ms
+Worker Startup Time: 11 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
@@ -1087,27 +992,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded platformnotifications (6.24 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded platformnotifications (10.79 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `platformnotifications.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed platformnotifications triggers (2.61 sec)
-  platformnotifications.recfrost.workers.dev (custom domain)
-Current Version ID: 68da05f6-d069-45f4-ae61-883e7c983f19
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-39-08_794.log"
+*** deploy platformnotifications FAILED ***
 --- deploy playersettings ---
-Deploying worker playersettings version 0.1.0-7984c94 to playersettings.recfrost.workers.dev
+Deploying worker playersettings version 0.1.0-bddf667 to playersettings.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 388.84 KiB / gzip: 87.85 KiB
-Worker Startup Time: 28 ms
+Total Upload: 389.38 KiB / gzip: 88.08 KiB
+Worker Startup Time: 27 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.RECFLARE_PLAYER_SETTINGS (4619d33812144967af55d528eaef84a4)                     KV Namespace              
@@ -1128,27 +1028,22 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded playersettings (6.75 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded playersettings (28.66 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `playersettings.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed playersettings triggers (2.63 sec)
-  playersettings.recfrost.workers.dev (custom domain)
-Current Version ID: ab09c69e-e192-4551-924b-1dcb76d75b9d
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-39-37_605.log"
+*** deploy playersettings FAILED ***
 --- deploy roomcomments ---
-Deploying worker roomcomments version 0.1.0-7984c94 to roomcomments.recfrost.workers.dev
+Deploying worker roomcomments version 0.1.0-bddf667 to roomcomments.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 Total Upload: 389.88 KiB / gzip: 88.54 KiB
-Worker Startup Time: 29 ms
+Worker Startup Time: 23 ms
 Your Worker has access to the following bindings:
 Binding                                                                             Resource                  
 env.DB (recflare)                                                                   D1 Database               
@@ -1169,26 +1064,21 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
 
-Uploaded roomcomments (7.98 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded roomcomments (47.64 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `roomcomments.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed roomcomments triggers (2.73 sec)
-  roomcomments.recfrost.workers.dev (custom domain)
-Current Version ID: e35d74e2-0fee-4c64-90c8-602d065cf373
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-41-24_899.log"
+*** deploy roomcomments FAILED ***
 --- deploy rooms ---
-Deploying worker rooms version 1.0.1-7984c94 to rooms.recfrost.workers.dev
+Deploying worker rooms version 1.0.1-bddf667 to rooms.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 549.32 KiB / gzip: 130.92 KiB
+Total Upload: 551.67 KiB / gzip: 131.59 KiB
 
 [31mX [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/214c62591d20f4049bfc6a766f55d865/r2/buckets/recflare-cdn) failed.[0m
 
@@ -1197,14 +1087,14 @@ Total Upload: 549.32 KiB / gzip: 130.92 KiB
   If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
 
 
-🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_21-25-10_858.log"
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-43-53_170.log"
 *** deploy rooms FAILED ***
 --- deploy storage ---
-Deploying worker storage version 0.1.0-7984c94 to storage.recfrost.workers.dev
+Deploying worker storage version 0.1.0-bddf667 to storage.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
-Total Upload: 392.30 KiB / gzip: 89.53 KiB
+Total Upload: 392.30 KiB / gzip: 89.52 KiB
 
 [31mX [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/214c62591d20f4049bfc6a766f55d865/r2/buckets/recflare-cdn) failed.[0m
 
@@ -1213,25 +1103,25 @@ Total Upload: 392.30 KiB / gzip: 89.53 KiB
   If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
 
 
-🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_21-25-17_547.log"
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-43-58_611.log"
 *** deploy storage FAILED ***
 --- deploy www ---
-Deploying worker www version 0.1.0-7984c94 to www.recfrost.workers.dev
+Deploying worker www version 0.1.0-bddf667 to www.recfrost.workers.dev
 
- ⛅️ wrangler 4.128.0 (update available 4.139.0)
+ ⛅️ wrangler 4.128.0 (update available 4.146.0)
 ───────────────────────────────────────────────
 🌀 Building list of assets...
 ✨ Read 7 files from the assets directory C:\Users\citizen\Desktop\RecFrostDevelopment\Servers\APIServers\RecFrost_Server-MainBranch\apps\www\dist\client
 🌀 Starting asset upload...
 🌀 Found 2 new or modified static assets to upload. Proceeding with upload...
 + /index.html
-+ /assets/index-BtUa2Ruz.js
++ /assets/index-B53CHBjV.js
 Uploaded 1 of 2 assets
 Uploaded 2 of 2 assets
-✨ Success! Uploaded 2 files (2 already uploaded) (1.83 sec)
+✨ Success! Uploaded 2 files (2 already uploaded) (5.56 sec)
 
-Total Upload: 307.96 KiB / gzip: 70.67 KiB
-Worker Startup Time: 8 ms
+Total Upload: 318.93 KiB / gzip: 73.85 KiB
+Worker Startup Time: 19 ms
 Your Worker has access to the following bindings:
 Binding                                                                                        Resource                  
 env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub, defined in notify)                           Durable Object            
@@ -1241,6 +1131,7 @@ env.TURNSTILE_SECRET_KEY (8bcc9cb8d9924204a40d0f086c28029d/TURNSTILE_SECRET_KEY)
 env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                                   Secrets Store Secret      
 env.DISCORD_CLIENT_ID (8bcc9cb8d9924204a40d0f086c28029d/DISCORD_CLIENT_ID)                     Secrets Store Secret      
 env.DISCORD_CLIENT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/DISCORD_CLIENT_SECRET)             Secrets Store Secret      
+env.DISCORD_BOT_TOKEN (8bcc9cb8d9924204a40d0f086c28029d/DISCORD_BOT_TOKEN)                     Secrets Store Secret      
 env.AUTH (auth)                                                                                Worker                    
 env.ASSETS                                                                                     Assets                    
 env.ENVIRONMENT ("development")                                                                Environment Variable      
@@ -1261,18 +1152,13 @@ env.PHOTON_CHAT_APP_ID ("(hidden)")                                             
 env.PHOTON_VOICE_APP_ID ("(hidden)")                                                           Environment Variable      
 env.STARTING_TOKENS ("(hidden)")                                                               Environment Variable      
 
-Uploaded www (9.83 sec)
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause 'workers_dev' is not in your Wrangler file, it will be disabled for this deployment by default.[0m
+Uploaded www (17.72 sec)
 
-  To override this setting, you can enable workers.dev by explicitly setting 'workers_dev = true' in your Wrangler file.
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `www.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
 
-
-[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mBecause your 'workers.dev' route is disabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be disabled for this deployment by default.[0m
-
-  To override this setting, you can enable Preview URLs by explicitly setting 'preview_urls = true' in your Wrangler file.
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
 
 
-Deployed www triggers (2.44 sec)
-  www.recfrost.workers.dev (custom domain)
-Current Version ID: e25ba7ab-bfa9-40b8-9fa7-d4b73f488e68
-=== done: 21 passed, 6 failed [ api cdn img mono rooms storage ] ===
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-10-01_19-44-03_262.log"
+*** deploy www FAILED ***
+=== done: 0 passed, 27 failed [ accounts ai api auth cards cdn chat clubs commerce datacollection discovery econ img leaderboard link lists match moderation mono notify ns platformnotifications playersettings roomcomments rooms storage www ] ===

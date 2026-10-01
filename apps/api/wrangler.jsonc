@@ -22,14 +22,17 @@
 	// Saved-image uploads are written here. The `recflare-cdn` bucket (owned by the
 	// `cdn` worker, written by `storage`) is bound read-only alongside it, to hash an
 	// invention's uploaded data blob for its `BlobHash`.
-	"r2_buckets": [
+	// RecFrost fork: R2 is disabled — these bind KV namespaces under the same
+	// names and the entry wraps them with withR2OverKv (see r2-kv.ts). "local"
+	// ids are replaced from RECFLARE_KV at deploy time.
+	"kv_namespaces": [
 		{
 			"binding": "IMAGES",
-			"bucket_name": "recflare-img"
+			"id": "local"
 		},
 		{
 			"binding": "CDN_ASSETS",
-			"bucket_name": "recflare-cdn"
+			"id": "local"
 		}
 	],
 	// Per-player settings KV, owned by the `playersettings` worker. Read AND written here,
