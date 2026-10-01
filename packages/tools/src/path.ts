@@ -4,15 +4,17 @@ import memoizeOne from 'memoize-one'
 import { z } from 'zod'
 
 export const getRepoRoot = memoizeOne(() => {
-	// empathic returns a Windows path (backslashes) on win32, which fails the
-	// POSIX validation below — normalize first. node accepts forward slashes
-	// everywhere, so downstream joins are unaffected.
-	const found = (find.up('pnpm-lock.yaml') ?? '').replace(/\\/g, '/')
+	// empathic's result can use either separator; normalize to the platform
+	// native form so every consumer (zx's `cd()`, `process.cwd() === root`
+	// comparisons, `path.join`) sees one consistent style. A mixed-style root
+	// is what dies: zx resolves a POSIX `cd()` target against a Windows cwd
+	// with ENOENT, and a forward-slash root never `===` a Windows cwd.
+	const found = path.normalize(find.up('pnpm-lock.yaml') ?? '')
 	const pnpmLock = z
 		.string()
 		.trim()
-		.endsWith('/pnpm-lock.yaml')
-		.refine((s) => s.startsWith('/') || /^[A-Za-z]:\//.test(s), {
+		.endsWith(`${path.sep}pnpm-lock.yaml`)
+		.refine((s) => path.isAbsolute(s), {
 			message: 'expected an absolute path to pnpm-lock.yaml',
 		})
 		.parse(found)

@@ -34,13 +34,10 @@
 	},
 	// CDN binaries (signature blobs + room build data) are stored as R2 objects
 	// and streamed back by key. Keys are prefixed `sigs/` and `room/`.
-	// RecFrost fork: R2 is disabled — this binds a KV namespace under the same
-	// name and the entry wraps it with withR2OverKv (see r2-kv.ts). "local"
-	// id is replaced from RECFLARE_KV at deploy time.
-	"kv_namespaces": [
+	"r2_buckets": [
 		{
 			"binding": "CDN_ASSETS",
-			"id": "local"
+			"bucket_name": "recflare-cdn"
 		}
 	],
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the

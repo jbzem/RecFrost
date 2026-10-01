@@ -1,7 +1,18 @@
-import { adminSecretsStore, env, SELF } from 'cloudflare:test'
+import {
+	adminSecretsStore,
+	createExecutionContext,
+	createScheduledController,
+	env,
+	SELF,
+	waitOnExecutionContext,
+} from 'cloudflare:test'
 import { beforeAll, expect, it } from 'vitest'
 
-import { SCHEMA_DDL as ACCOUNT_SCHEMA_DDL, updateAccount } from '@repo/domain/src/accounts-db'
+import {
+	SCHEMA_DDL as ACCOUNT_SCHEMA_DDL,
+	getAccount,
+	updateAccount,
+} from '@repo/domain/src/accounts-db'
 import { AUDIT_LOG_SCHEMA_DDL } from '@repo/domain/src/audit-db'
 import { PlatformType } from '@repo/domain/src/enums'
 import { getPendingGifts, RECEIVED_GIFT_SCHEMA_DDL } from '@repo/domain/src/gifts-db'
@@ -31,6 +42,8 @@ import { createWarning, SCHEMA_DDL as WARNING_SCHEMA_DDL } from '../../../../api
 import {
 	CACHED_LOGIN_PLATFORMS,
 	countAccountsForPlatformIdentity,
+	getLinksForAccount,
+	getLinksForPlatform,
 	isPlatformIdentityLinked,
 	linkPlatformIdentity,
 	PLATFORM_SCHEMA_DDL,
@@ -43,6 +56,10 @@ import {
 } from '../../../../econ/src/balance-db'
 import { CATALOG_SCHEMA_DDL } from '../../../../econ/src/catalog-db'
 import { CONSUMABLE_SCHEMA_DDL, getConsumables } from '../../../../econ/src/consumables-db'
+import {
+	DISCORD_ROLE_GIFT_MESSAGE,
+	grantDiscordRoleGift,
+} from '../../../../econ/src/discord-role-gift'
 import { EQUIPMENT_SCHEMA_DDL, getEquipment } from '../../../../econ/src/equipment-db'
 import {
 	grantCustomAvatarItem,
@@ -50,12 +67,15 @@ import {
 	ownedCustomAvatarItemIds,
 } from '../../../../econ/src/inventory-custom-db'
 import { discordConfig, parseRoleIds, qualifies } from '../../discord'
+import { fetchMemberRoles, refreshDiscordRoles } from '../../discord-roles'
 import { DOCUMENTED_SERVICES } from '../../docs'
 import { DISCORD_INVITE, ISSUES_URL, PRIVACY_EMAIL } from '../../links'
 import { turnstileKeys } from '../../turnstile'
 import { postAuthForm, readAuthError } from '../../upstream'
+import { scheduled } from '../../www.app'
 
 import type { Env } from '../../context'
+import type { MemberRead } from '../../discord-roles'
 
 declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
@@ -213,6 +233,60 @@ it('treats an unresolvable or half-configured keypair as signup being off', asyn
 		siteKey: '0xsite',
 		secretKey: '0xsecret',
 	})
+})
+
+// The operator's switch, off by default. `auth` is what enforces it (see its tests); www
+// reads the same knob so the SPA hides the form and the endpoint answers in the sentence
+// the form would show, rather than every visitor learning it from auth's refusal.
+it('PASSWORD_SIGNUP=off reports signup closed and refuses the endpoint', async () => {
+	const original = env.PASSWORD_SIGNUP
+	try {
+		env.PASSWORD_SIGNUP = 'off'
+		const config = (await (await SELF.fetch('https://example.com/api/config')).json()) as {
+			signupEnabled: boolean
+			turnstileSiteKey: string | null
+		}
+		// Closed, and the site key withheld with it: no widget to mount for a form that
+		// isn't offered.
+		expect(config.signupEnabled).toBe(false)
+		expect(config.turnstileSiteKey).toBeNull()
+
+		const res = await SELF.fetch('https://example.com/api/signup', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ password: 'hunter2', turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX' }),
+		})
+		expect(res.status).toBe(403)
+		expect(await res.json()).toEqual({
+			error: 'Account creation from the website is disabled. Launch the game to create an account.',
+		})
+
+		// Unset is off as well.
+		delete env.PASSWORD_SIGNUP
+		const unset = await SELF.fetch('https://example.com/api/signup', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ password: 'hunter2', turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX' }),
+		})
+		expect(unset.status).toBe(403)
+	} finally {
+		env.PASSWORD_SIGNUP = original
+	}
+})
+
+// auth's own refusal of the grant, should a request reach it anyway, reads the same.
+it('translates auth’s password-signup refusal into the same sentence', async () => {
+	const failure = await readAuthError(
+		new Response(
+			JSON.stringify({ error: 'invalid_grant', error_description: 'password signup is disabled' }),
+			{ status: 400, headers: { 'content-type': 'application/json' } }
+		),
+		'signup'
+	)
+	expect(failure.message).toBe(
+		'Account creation from the website is disabled. Launch the game to create an account.'
+	)
+	expect(failure.status).toBe(400)
 })
 
 it('refuses a signup with no Turnstile token', async () => {
@@ -642,6 +716,64 @@ it('stores the discord identity on a platform the login picker will not list', (
 	expect(CACHED_LOGIN_PLATFORMS).not.toContain(PlatformType.Discord)
 })
 
+// The one-time supporter gift the claim pays on an account's FIRST Discord link: econ's
+// cron grant, called on demand with the roles Discord just served, against www's own
+// bindings. Exercised at the grant, since the route's path to it runs through discord.com;
+// the claim decides "first" from the link table before it writes (see www.app.ts).
+it('pays the discord role gift once, on demand, from www’s bindings', async () => {
+	const hub = () => env.RECFLARE_NOTIFICATIONS_HUB.getByName('global')
+	await hub().fetch('http://do/all', { method: 'DELETE' })
+	const supporter = '1077000000000000001'
+	const booster = '1077000000000000002'
+	const giftEnv = { ...env, DISCORD_ROLE_TOKENS: `${supporter}=2500,${booster}=10000` } as Env
+
+	// No map, or a member holding no mapped role: nothing is paid and nothing is written.
+	await expect(
+		grantDiscordRoleGift({ ...env, DISCORD_ROLE_TOKENS: undefined } as Env, 4010, [supporter], 100)
+	).resolves.toBeNull()
+	await expect(
+		grantDiscordRoleGift(giftEnv, 4010, ['1077000000000000009'], 100)
+	).resolves.toBeNull()
+	expect(await getPendingGifts(env.DB, 4010)).toEqual([])
+	expect(await (await hub().fetch('http://do/all')).json()).toEqual([])
+
+	// The best of the member's mapped roles pays — one box, on top of the signup grant, which
+	// is seeded first so a never-touched balance doesn't start from the gift alone.
+	await expect(
+		grantDiscordRoleGift(giftEnv, 4010, [supporter, booster], DEFAULT_STARTING_TOKENS)
+	).resolves.toEqual({ roleId: booster, tokens: 10000 })
+	await expect(
+		getBalance(env.DB, 4010, CurrencyType.RecCenterTokens, DEFAULT_STARTING_TOKENS)
+	).resolves.toBe(DEFAULT_STARTING_TOKENS + 10000)
+	const gifts = await getPendingGifts(env.DB, 4010)
+	expect(gifts).toHaveLength(1)
+	expect(gifts[0]).toMatchObject({
+		FromPlayerId: 1,
+		CurrencyType: CurrencyType.RecCenterTokens,
+		Currency: 10000,
+		AvatarItemType: null,
+		Message: DISCORD_ROLE_GIFT_MESSAGE,
+	})
+
+	// Announced through www's hub binding exactly as econ's cron announces it: the resulting
+	// total into the -2 bucket, then the box.
+	const frames = (await (await hub().fetch('http://do/all')).json()) as Array<{
+		playerId: number
+		notificationType: number
+		data: Record<string, unknown>
+	}>
+	expect(frames.map((f) => [f.playerId, f.notificationType])).toEqual([
+		[4010, 61],
+		[4010, 31],
+	])
+	expect(frames[0].data).toEqual({
+		Balance: DEFAULT_STARTING_TOKENS + 10000,
+		CurrencyType: CurrencyType.RecCenterTokens,
+		Platform: -2,
+	})
+	expect(frames[1].data).toMatchObject({ Id: gifts[0]!.Id, Currency: 10000, BalanceType: -2 })
+})
+
 // The privacy policy is what the Meta Horizon Store's VRC.Privacy.1–4 checks are run
 // against, and a reviewer only sees the rendered page — so the four things they look
 // for are pinned here. If a section is renamed, re-read the VRC before loosening the
@@ -994,7 +1126,7 @@ it('lifts a ban, clearing the expiry and the audit columns but keeping the repor
 		200
 	)
 
-	const lifted = await staffPost(`/api/staff/reports/${report.id}/ban`, 8110, { banned: false })
+	const lifted = await staffPost(`/api/staff/reports/${report.id}/ban`, 8111, { banned: false })
 	expect(lifted.status).toBe(200)
 	const row = (await lifted.json()) as Record<string, unknown>
 	expect(row.banned).toBe(0)
@@ -1006,6 +1138,62 @@ it('lifts a ban, clearing the expiry and the audit columns but keeping the repor
 
 	const bans = (await (await staffGet('/api/staff/bans', 8110)).json()) as Array<{ id: number }>
 	expect(bans.map((b) => b.id)).not.toContain(report.id)
+})
+
+// A lift wipes the ban columns, so without its own signature the row reads exactly like a
+// report nobody acted on — and the next moderator to search the player saw "Ban…" and
+// re-banned someone a colleague had deliberately let back in. The lift signs the row with
+// who and when; the search serves it; a re-ban clears it, since a standing ban is not lifted.
+it('signs a lifted ban with who lifted it, and clears that on a re-ban', async () => {
+	const player = 8240
+	const report = await createReport(env.DB, { reporterPlayerId: 8241, reportedPlayerId: player })
+	expect((await staffPost(`/api/staff/reports/${report.id}/ban`, 8110, { days: 1 })).status).toBe(
+		200
+	)
+	// Untouched until a lift — a standing ban has not been lifted.
+	const banned = (await (await staffGet(`/api/staff/reports/${report.id}`, 8110)).json()) as Record<
+		string,
+		unknown
+	>
+	expect(banned).toMatchObject({ banned: 1, unbanned_by_player_id: null, unbanned_at: null })
+
+	const lifted = (await (
+		await staffPost(`/api/staff/reports/${report.id}/ban`, 8111, { banned: false })
+	).json()) as Record<string, unknown>
+	// Signed by the LIFTING moderator, not the banning one.
+	expect(lifted).toMatchObject({ banned: 0, unbanned_by_player_id: 8111 })
+	expect(lifted.unbanned_at).toEqual(expect.any(String))
+
+	// The search — `/moderation/search?reportedPlayerId=…` — is where the next moderator
+	// meets the row, so it has to carry the signature too.
+	const search = (await (
+		await staffGet(`/api/staff/reports?reportedPlayerId=${player}`, 8110)
+	).json()) as { reports: Array<Record<string, unknown>> }
+	expect(search.reports).toHaveLength(1)
+	expect(search.reports[0]).toMatchObject({
+		id: report.id,
+		banned: 0,
+		unbanned_by_player_id: 8111,
+		unbanned_at: lifted.unbanned_at,
+	})
+	// And the player's own page, which the search links to.
+	const history = (await (await staffGet(`/api/staff/players/${player}`, 8110)).json()) as {
+		activeBan: unknown
+		reports: Array<Record<string, unknown>>
+	}
+	expect(history.activeBan).toBeNull()
+	expect(history.reports[0]).toMatchObject({ unbanned_by_player_id: 8111 })
+
+	// Banning again — knowingly — is a standing ban once more, with no lift on it.
+	const rebanned = (await (
+		await staffPost(`/api/staff/reports/${report.id}/ban`, 8112, { days: 7 })
+	).json()) as Record<string, unknown>
+	expect(rebanned).toMatchObject({
+		banned: 1,
+		banned_by_player_id: 8112,
+		unbanned_by_player_id: null,
+		unbanned_at: null,
+	})
 })
 
 // The report row keeps only the ban's CURRENT state — a lift wipes who banned and when —
@@ -1092,14 +1280,16 @@ it('throws a banned player out of the instance they are standing in', async () =
 	expect(frames[0].data.GameSessionId).toBe(77001)
 
 	// The SAME ban the sign-in screen describes, not a generic one: its category, message and
-	// the Duration/TimeoutStartedAt pair, three days from when it was handed down.
+	// `Duration` — the seconds LEFT, which at the instant the ban is handed down is the whole
+	// three days. `TimeoutStartedAt` is not paired with it by the client and stays null.
 	const banned = await getReportById(env.DB, report.id)
 	expect(frames[0].data).toMatchObject({
 		ReportCategory: banned!.report_category,
 		Message: 'Rule violation',
-		TimeoutStartedAt: banned!.banned_at,
-		Duration: 3 * 86_400,
+		TimeoutStartedAt: null,
 	})
+	expect(frames[0].data.Duration).toBeGreaterThan(3 * 86_400 - 5)
+	expect(frames[0].data.Duration).toBeLessThanOrEqual(3 * 86_400)
 
 	// And they are out of that instance — moved into their own DORM, not deleted: `match`
 	// lets a banned player matchmake there and nowhere else, so it is where they read the
@@ -2065,4 +2255,269 @@ it('refuses an XP gift that is not a positive whole number, too large, or to nob
 	expect((await devPost('/api/staff/players/8395/gift-xp', 8110, { amount: 5 })).status).toBe(404)
 	await expect(getProgression(env.DB, 8351)).resolves.toEqual({ PlayerId: 8351, Level: 1, XP: 0 })
 	expect(await auditRows('gift_xp', 8351)).toEqual([])
+})
+
+// ---- Discord role sweep ------------------------------------------------------
+
+// The daily cron behind `platform_account.role`: with a bot token configured it re-reads
+// every Discord link's roles and writes them back. Driven through `refreshDiscordRoles`
+// with the Discord read replaced, because the real one calls discord.com; the HTTP
+// decoding is pinned separately below with a fake fetch.
+
+const SWEEP_GUILD = '1077000000000000000'
+const ROLE_A = '1077000000000000001'
+const ROLE_B = '1077000000000000002'
+
+/** A configured sweep env over the test bindings. */
+const sweepEnv = (overrides: Partial<Env> = {}): Env =>
+	({
+		...env,
+		DISCORD_GUILD_ID: SWEEP_GUILD,
+		DISCORD_BOT_TOKEN: { get: async () => 'test-bot-token' } as SecretsStoreSecret,
+		...overrides,
+	}) as Env
+
+/** A `fetchMember` that answers per Discord user id and records what it was asked. */
+const memberTable = (answers: Record<string, MemberRead>) => {
+	const asked: string[] = []
+	const fetchMember = async (token: string, guild: string, userId: string): Promise<MemberRead> => {
+		expect(token).toBe('test-bot-token')
+		expect(guild).toBe(SWEEP_GUILD)
+		asked.push(userId)
+		return answers[userId] ?? { kind: 'error', status: 500 }
+	}
+	return { asked, fetchMember }
+}
+
+/** The one Discord link on an account, as the sweep left it. */
+const discordLink = async (accountId: number) =>
+	(await getLinksForAccount(env.DB, accountId)).find((l) => l.platform === PlatformType.Discord)!
+
+/**
+ * The sweep reads EVERY Discord link, and the table is shared across this file, so each
+ * test starts from only its own rows.
+ */
+const onlyDiscordLinks = async (
+	links: Array<[accountId: number, userId: string, roles: string[]]>
+) => {
+	await env.DB.prepare('DELETE FROM platform_account WHERE platform = ?1')
+		.bind(PlatformType.Discord)
+		.run()
+	for (const [accountId, userId, roles] of links) {
+		await linkPlatformIdentity(env.DB, accountId, PlatformType.Discord, userId, roles)
+	}
+}
+
+it('does nothing until a guild and a bot token are configured', async () => {
+	await onlyDiscordLinks([[9100, '900000000000000100', [ROLE_A]]])
+	const { asked, fetchMember } = memberTable({})
+	await expect(
+		refreshDiscordRoles(sweepEnv({ DISCORD_GUILD_ID: '' }), { fetchMember })
+	).resolves.toMatchObject({ skipped: true, refreshed: 0 })
+	await expect(
+		refreshDiscordRoles(
+			sweepEnv({ DISCORD_BOT_TOKEN: { get: async () => '' } as SecretsStoreSecret }),
+			{ fetchMember }
+		)
+	).resolves.toMatchObject({ skipped: true })
+	// A store that can't be read closes it the same way, rather than throwing out of a cron.
+	await expect(
+		refreshDiscordRoles(
+			sweepEnv({
+				DISCORD_BOT_TOKEN: {
+					get: async () => {
+						throw new Error('secret not found')
+					},
+				} as unknown as SecretsStoreSecret,
+			}),
+			{ fetchMember }
+		)
+	).resolves.toMatchObject({ skipped: true })
+	expect(asked).toEqual([])
+	expect((await discordLink(9100)).roles).toEqual([ROLE_A])
+})
+
+// The deployed test config has no guild, so the real handler takes the "off" path: pinned
+// so a misconfigured deploy is a logged no-op and not a daily error.
+it('runs the sweep from the scheduled handler and stays off without a guild', async () => {
+	await onlyDiscordLinks([[9100, '900000000000000100', [ROLE_A]]])
+	const before = await discordLink(9100)
+	const ctx = createExecutionContext()
+	await scheduled(createScheduledController(), env, ctx)
+	await waitOnExecutionContext(ctx)
+	expect(await discordLink(9100)).toEqual(before)
+})
+
+it('re-reads every discord link and writes the roles back', async () => {
+	await onlyDiscordLinks([
+		[9111, '900000000000000111', [ROLE_A]],
+		[9112, '900000000000000112', [ROLE_A]],
+		[9113, '900000000000000113', []],
+	])
+	// A Steam link on one of them is not a Discord link and is never asked about.
+	await linkPlatformIdentity(env.DB, 9111, PlatformType.Steam, '76561190000009111')
+	expect((await getLinksForPlatform(env.DB, PlatformType.Discord)).map((l) => l.accountId)).toEqual(
+		[9111, 9112, 9113]
+	)
+
+	const { asked, fetchMember } = memberTable({
+		'900000000000000111': { kind: 'member', roles: [ROLE_A] },
+		'900000000000000112': { kind: 'member', roles: [ROLE_B, ROLE_A] },
+		'900000000000000113': { kind: 'member', roles: [ROLE_A] },
+	})
+	const summary = await refreshDiscordRoles(sweepEnv(), { fetchMember })
+	expect(asked).toEqual(['900000000000000111', '900000000000000112', '900000000000000113'])
+	expect(summary).toEqual({
+		skipped: false,
+		refreshed: 3,
+		changed: 2,
+		gone: 0,
+		failed: 0,
+		halted: null,
+	})
+	expect((await discordLink(9111)).roles).toEqual([ROLE_A])
+	expect((await discordLink(9112)).roles).toEqual([ROLE_B, ROLE_A])
+	expect((await discordLink(9113)).roles).toEqual([ROLE_A])
+	// The Steam link is as it was: no roles, and nothing wrote to it.
+	const steam = (await getLinksForAccount(env.DB, 9111)).find(
+		(l) => l.platform === PlatformType.Steam
+	)!
+	expect(steam.roles).toEqual([])
+})
+
+it('records a member who left the guild as holding no roles, and leaves their Plus alone', async () => {
+	await updateAccount(env.DB, 9121, { hasPlus: true })
+	await onlyDiscordLinks([[9121, '900000000000000121', [ROLE_A]]])
+
+	const { fetchMember } = memberTable({ '900000000000000121': { kind: 'gone' } })
+	const summary = await refreshDiscordRoles(sweepEnv(), { fetchMember })
+	expect(summary).toMatchObject({ refreshed: 1, changed: 1, gone: 1 })
+	expect((await discordLink(9121)).roles).toEqual([])
+	// "Held a qualifying role once" is still true, and nothing here revokes it.
+	expect((await getAccount(env.DB, 9121))?.hasPlus).toBe(true)
+	// The link itself stays: it's what keeps the claim once-only per Discord user.
+	expect(
+		await isPlatformIdentityLinked(env.DB, 9121, PlatformType.Discord, '900000000000000121')
+	).toBe(true)
+})
+
+it('stops the run without writing when the token or the guild is refused', async () => {
+	await onlyDiscordLinks([
+		[9131, '900000000000000131', [ROLE_A]],
+		[9132, '900000000000000132', [ROLE_A]],
+	])
+	const { asked, fetchMember } = memberTable({
+		'900000000000000131': { kind: 'halt', reason: 'the bot is not in the guild (Unknown Guild)' },
+		'900000000000000132': { kind: 'gone' },
+	})
+	const summary = await refreshDiscordRoles(sweepEnv(), { fetchMember })
+	expect(asked).toEqual(['900000000000000131'])
+	expect(summary).toMatchObject({
+		refreshed: 0,
+		halted: 'the bot is not in the guild (Unknown Guild)',
+	})
+	// Neither row moved — in particular the second was NOT blanked as "gone".
+	for (const id of [9131, 9132]) expect((await discordLink(id)).roles).toEqual([ROLE_A])
+})
+
+it('skips a link that errored, keeps going, and honors a rate-limit pause', async () => {
+	await onlyDiscordLinks([
+		[9141, '900000000000000141', [ROLE_A]],
+		[9142, '900000000000000142', [ROLE_A]],
+	])
+	const slept: number[] = []
+	const { asked, fetchMember } = memberTable({
+		'900000000000000141': { kind: 'error', status: 502, pauseMs: 1_500 },
+		'900000000000000142': { kind: 'member', roles: [ROLE_B], pauseMs: 60_000 },
+	})
+	const summary = await refreshDiscordRoles(sweepEnv(), {
+		fetchMember,
+		sleep: async (ms) => {
+			slept.push(ms)
+		},
+	})
+	expect(asked).toEqual(['900000000000000141', '900000000000000142'])
+	expect(summary).toMatchObject({ refreshed: 1, changed: 1, failed: 1, halted: null })
+	// The pause is honored as asked, but capped: an hour-long retry_after is not slept.
+	expect(slept).toEqual([1_500, 10_000])
+	// The failed one keeps its snapshot.
+	expect((await discordLink(9141)).roles).toEqual([ROLE_A])
+	expect((await discordLink(9142)).roles).toEqual([ROLE_B])
+})
+
+// The HTTP half, against a fake discord.com. A 404 is three different things here, and
+// telling them apart is what keeps a bot that isn't in the guild yet from emptying every
+// snapshot in the table.
+it('decodes a bot member read: roles, gone, halt and error', async () => {
+	const answer =
+		(status: number, body: unknown, headers: Record<string, string> = {}) =>
+		async (url: string, init?: RequestInit) => {
+			expect(url).toBe(
+				`https://discord.com/api/v10/guilds/${SWEEP_GUILD}/members/900000000000000001`
+			)
+			expect(new Headers(init?.headers).get('authorization')).toBe('Bot test-bot-token')
+			return new Response(JSON.stringify(body), {
+				status,
+				headers: { 'content-type': 'application/json', ...headers },
+			})
+		}
+	const read = (status: number, body: unknown, headers?: Record<string, string>) =>
+		fetchMemberRoles(
+			'test-bot-token',
+			SWEEP_GUILD,
+			'900000000000000001',
+			answer(status, body, headers)
+		)
+
+	// A member record: roles as snowflake strings, anything else in the array dropped.
+	await expect(
+		read(200, { user: { id: '900000000000000001' }, roles: [ROLE_A, 5, ROLE_B] })
+	).resolves.toEqual({
+		kind: 'member',
+		roles: [ROLE_A, ROLE_B],
+		pauseMs: 0,
+	})
+	// A spent bucket asks for a pause before the next call, on any answer.
+	await expect(
+		read(200, { roles: [] }, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset-after': '2.5' })
+	).resolves.toEqual({ kind: 'member', roles: [], pauseMs: 2_500 })
+	await expect(read(200, { user: {} })).resolves.toMatchObject({ kind: 'error', status: 200 })
+
+	// The three 404s.
+	await expect(read(404, { code: 10007, message: 'Unknown Member' })).resolves.toMatchObject({
+		kind: 'gone',
+	})
+	await expect(read(404, { code: 10013, message: 'Unknown User' })).resolves.toMatchObject({
+		kind: 'gone',
+	})
+	await expect(read(404, { code: 10004, message: 'Unknown Guild' })).resolves.toMatchObject({
+		kind: 'halt',
+		reason: expect.stringContaining('Unknown Guild'),
+	})
+	await expect(read(404, { code: 0, message: '404: Not Found' })).resolves.toMatchObject({
+		kind: 'error',
+		status: 404,
+	})
+
+	// The token and the bot's access: every further call would fail the same way.
+	await expect(read(401, { code: 0, message: '401: Unauthorized' })).resolves.toMatchObject({
+		kind: 'halt',
+	})
+	await expect(read(403, { code: 50001, message: 'Missing Access' })).resolves.toMatchObject({
+		kind: 'halt',
+	})
+
+	// Rate limited: transient, with the body's retry_after (seconds) as the pause.
+	await expect(read(429, { retry_after: 1.25, global: false })).resolves.toEqual({
+		kind: 'error',
+		status: 429,
+		pauseMs: 1_250,
+	})
+	await expect(read(500, {})).resolves.toMatchObject({ kind: 'error', status: 500 })
+	// Unreachable: an error with no status, never a throw out of the cron.
+	await expect(
+		fetchMemberRoles('test-bot-token', SWEEP_GUILD, '900000000000000001', async () => {
+			throw new TypeError('fetch failed')
+		})
+	).resolves.toEqual({ kind: 'error', status: null })
 })

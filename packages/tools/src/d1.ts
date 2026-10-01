@@ -71,7 +71,6 @@ export async function getRemoteD1Id(): Promise<string> {
  */
 async function runD1(worker: string, extraArgs: string[], remote: boolean): Promise<string> {
 	const workerDir = path.join(getRepoRoot(), 'apps', worker)
-	cd(workerDir)
 
 	const args = ['d1', 'execute', DB_NAME, ...extraArgs]
 	let cleanup: (() => Promise<void>) | undefined
@@ -92,8 +91,10 @@ async function runD1(worker: string, extraArgs: string[], remote: boolean): Prom
 
 	try {
 		// Via `pnpm exec` so wrangler resolves from the worker's node_modules (it isn't a
-		// dependency of @repo/tools, so it's not on this process's PATH).
-		const out = await $`pnpm exec wrangler ${args}`.quiet()
+		// dependency of @repo/tools, so it's not on this process's PATH). The cwd rides
+		// on the spawn (not zx's `cd()`, which cannot cross Windows/POSIX path styles
+		// and dies with ENOENT when they mix).
+		const out = await $({ cwd: workerDir })`pnpm exec wrangler ${args}`.quiet()
 		return out.stdout
 	} finally {
 		if (cleanup) await cleanup()
@@ -112,7 +113,12 @@ export async function execSql<Row = Record<string, unknown>>(
 	remote: boolean,
 	worker = 'auth'
 ): Promise<D1ExecResult<Row>> {
-	const stdout = await runD1(worker, ['--command', sql, '--json'], remote)
+	// One physical line: wrangler's `--command` parses only up to the first
+	// newline (the rest is dropped and SQLite reports `incomplete input`), and
+	// template literals in a CRLF checkout carry `\r\n`. Newlines here are only
+	// ever statement formatting — string literals stay on one line — so folding
+	// them to spaces is semantics-preserving.
+	const stdout = await runD1(worker, ['--command', sql.replace(/\r?\n/g, ' '), '--json'], remote)
 	// wrangler --json prints a one-element array of results to stdout.
 	const start = stdout.indexOf('[')
 	if (start === -1) throw new Error(`unexpected d1 execute output:\n${stdout}`)

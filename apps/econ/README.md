@@ -49,7 +49,8 @@ missing/invalid). `~` = optional auth: served to anyone, personalised for a vali
 | GET      | `/api/gamerewards/v1/pending`                        |      | Pending game rewards (stub `[]`)        |
 | POST     | `/api/gamerewards/v1/request`                        | ✓    | Claim a game reward → 5 XP + gift box   |
 | GET      | `/api/roomkeys/v1/mine`                              |      | The player's room keys (stub `[]`)      |
-| GET      | `/api/roomkeys/v1/room`                              |      | Room keys for a room (stub `[]`)        |
+| GET      | `/api/roomkeys/v1/room`                              |      | The keys a room has listed              |
+| POST     | `/api/roomkeys/v1/create`                            | ✓    | List a key for a room (owner/co-owner)  |
 | POST     | `/api/CampusCard/v1/UpdateAndGetSubscription`        | ~    | Gold year for `developer`s, else `{}`   |
 | GET      | `/openapi.json`                                      |      | Generated OpenAPI 3.1 spec (see below)  |
 
@@ -569,6 +570,46 @@ is our cap.
 `GET /api/gamerewards/v1/pending` stays `[]`: with rewards claimed on request, nothing sits
 waiting to be collected.
 
+## Discord supporter gift (`src/discord-role-gift.ts`)
+
+A cron (`triggers.crons` in `wrangler.jsonc`) hands every account holding a mapped Discord
+role that role's RecCenterTokens in a gift box, every time it fires. The map is the
+`DISCORD_ROLE_TOKENS` var — `RECFLARE_DISCORD_ROLE_TOKENS` in the root `.env`, see
+`.env.example` — as `<roleId>=<tokens>` pairs separated by commas:
+
+```
+928457923857943795=2500,2938479238479234=10000
+```
+
+- **The schedule is the cadence.** It ships weekly (Monday 05:00 UTC); make it daily by
+  changing the cron line. There is no ledger and no notion of a period in the code — every
+  run pays everyone it finds, so running it twice pays twice, and a hand run is an extra
+  gift on purpose.
+- **One box per account per run, the highest amount wins.** An account holding both roles
+  above gets one box of 10,000, not two boxes or 12,500, so the map reads as tiers however
+  Discord stacks the roles. A role named twice keeps its last amount; an entry that isn't
+  `digits=positive integer` is logged and skipped, not fatal. No roles at all — unset, empty,
+  all rejected — leaves the cron a logged no-op.
+- **Roles come from `platform_account.role`**, the snapshot `www`'s benefits claim writes and
+  its daily role sweep (04:30 UTC, with a bot token) refreshes. This cron never asks Discord
+  anything, which is why the default fires half an hour after that sweep. A player who has
+  never claimed on the website has no link and is never paid, whatever they hold in the guild.
+- **The grant is econ's usual three moves**: seed the signup grant (`STARTING_TOKENS`), credit
+  the balance, store a token box from the Coach (context 0, `AvatarItemType` null), then
+  push `StorefrontBalanceUpdate` with the resulting total and `GiftPackageReceivedImmediate`
+  for the box. An offline player finds the box on their next `GET /api/avatar/v2/gifts`.
+- A grant that fails partway is logged with the account, role and amount and is not retried —
+  a retry that also failed partway is how a balance gets credited twice.
+- **The first link is paid on demand.** `www`'s benefits claim calls `grantDiscordRoleGift`
+  — one account, the roles Discord just served, the same map and box — the first time an
+  account links its Discord, so a new supporter gets one box now rather than after the next
+  run. `www` decides "first" from the link table; this module keeps no ledger either way, and
+  the cron pays that account again on its next run like everyone else.
+
+One D1 read for the links, then a handful of writes and two hub calls per box, sequentially.
+A cron invocation has a fixed subrequest budget (50 free, 1000 paid); a community whose
+supporters outgrow that is the point to batch the run.
+
 ## Bindings
 
 | Binding                      | Type           | Notes                                                      |
@@ -578,6 +619,7 @@ waiting to be collected.
 | `ASSETS`                     | static assets  | Serves `sf{N}.json` storefront catalogs                    |
 | `RECFLARE_NOTIFICATIONS_HUB` | Durable Object | Cross-worker RPC to the `notify` worker's hub              |
 | `STARTING_TOKENS`            | var            | Optional; new-player token grant (default in balance-db)   |
+| `DISCORD_ROLE_TOKENS`        | var            | Optional; Discord role → token gift per cron run (above)   |
 
 Add a storefront by dropping a new `sfN.json` in `static/storefronts` — no code change.
 

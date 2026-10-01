@@ -23,6 +23,7 @@ import {
 	listCustomAvatarItemsByCreator,
 	listFeaturedCustomAvatarItems,
 	listHotCustomAvatarItems,
+	MAX_PLAYER_ITEM_PRICE,
 	searchCustomAvatarItems,
 	toQuestCustomAvatarItem,
 	updateCustomAvatarItem,
@@ -44,6 +45,7 @@ import {
 	inventionDeleteResult,
 	inventionSaveV9Failure,
 	isInventionCheered,
+	MAX_INVENTION_PRICE,
 	normalizeInventionTags,
 	ownsAllInventions,
 	parsePermissionLevel,
@@ -473,12 +475,17 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 				'which is what the store’s user-generated-content tab searches for.\n\n' +
 				'The two files go to the shared image bucket (`recflare-img`) under ' +
 				'`avatar-item/<date>/<id>-thumb.png` and `avatar-item/<date>/<id>-design.png`; those ' +
-				'keys are the `ThumbnailImageFilename` / `DesignFilename` on the row.',
+				'keys are the `ThumbnailImageFilename` / `DesignFilename` on the row.\n\n' +
+				'`Price` is capped at 1000 tokens (`MAX_PLAYER_ITEM_PRICE`); one above it, or below ' +
+				'0, is refused with a 400 rather than clamped.',
 			security: AUTHED,
 			requestBody: form(CreateCustomAvatarItemRequest, 'The metadata and the two files'),
 			responses: {
 				200: json(CustomAvatarItemResponse, 'The created item'),
-				400: json(CustomAvatarItemResponse, 'Missing or malformed metadata / files'),
+				400: json(
+					CustomAvatarItemResponse,
+					'Missing or malformed metadata / files, or a `Price` outside 0–1000'
+				),
 				401: UNAUTHORIZED_RESPONSE,
 				413: json(CustomAvatarItemResponse, 'Either file exceeds the configured per-file limit'),
 			},
@@ -504,6 +511,13 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			if (typeof meta.BaseAvatarItemId !== 'number') return fail('BaseAvatarItemId is required')
 			if (typeof meta.BaseAvatarItemColor !== 'string')
 				return fail('BaseAvatarItemColor is required')
+			if (meta.Price !== undefined && meta.Price !== null) {
+				if (typeof meta.Price !== 'number' || !Number.isInteger(meta.Price))
+					return fail('Price must be an integer')
+				if (meta.Price < 0) return fail('Price must be >= 0')
+				if (meta.Price > MAX_PLAYER_ITEM_PRICE)
+					return fail(`Price must be <= ${MAX_PLAYER_ITEM_PRICE}`)
+			}
 			if (!(body.thumbnailImage instanceof File)) return fail('thumbnailImage is required')
 			if (!(body.design instanceof File)) return fail('design is required')
 			const limit = maxApiUploadBytes(c.env)
@@ -572,13 +586,14 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 				'A partial edit of `Name`, `Description`, `Price` and `Accessibility` — the client ' +
 				'sends every field and nulls the ones it is not changing, so null means "leave ' +
 				'alone". Only the creator may edit. `ModifiedAt` is bumped. Answers the updated ' +
-				'item in the same `{ Value, Success, Error, error_id }` envelope as the create.',
+				'item in the same `{ Value, Success, Error, error_id }` envelope as the create. ' +
+				'`Price` is bound the same way as on the create: 0 to 1000 tokens, or a 400.',
 			security: AUTHED,
 			parameters: [stringParam('id', 'The `CustomAvatarItemId`')],
 			requestBody: jsonBody(UpdateCustomAvatarItemRequest, 'The fields to change'),
 			responses: {
 				200: json(CustomAvatarItemResponse, 'The updated item'),
-				400: json(CustomAvatarItemResponse, 'Malformed body'),
+				400: json(CustomAvatarItemResponse, 'Malformed body, or a `Price` outside 0–1000'),
 				401: UNAUTHORIZED_RESPONSE,
 				403: json(CustomAvatarItemResponse, 'Not the creator'),
 				404: json(CustomAvatarItemResponse, 'No such item'),
@@ -621,6 +636,9 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			}
 			if (patch.name !== null && patch.name?.trim() === '')
 				return fail(400, 'Name must not be blank')
+			if (patch.price !== null && patch.price < 0) return fail(400, 'Price must be >= 0')
+			if (patch.price !== null && patch.price > MAX_PLAYER_ITEM_PRICE)
+				return fail(400, `Price must be <= ${MAX_PLAYER_ITEM_PRICE}`)
 
 			const item = await updateCustomAvatarItem(c.env.DB, itemId, patch)
 			if (!item) return fail(404, 'No such item')
@@ -1458,15 +1476,18 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			summary: 'Publish an invention',
 			description:
 				'What puts an invention into search and the feeds. Sets the permission other ' +
-				'players get (defaulting to UseOnly) and its price. Another GET that writes.',
+				'players get (defaulting to UseOnly) and its price. Another GET that writes. A ' +
+				'price over 1000 tokens (`MAX_INVENTION_PRICE`) refuses the whole publish with a ' +
+				'400 rather than being clamped or dropped.',
 			security: AUTHED,
 			parameters: [
 				intQuery('inventionId', 'Invention id; required'),
 				stringQuery('permissionLevel', 'A name like `useonly`, or the raw number'),
-				intQuery('price', 'Price in tokens; negative is ignored'),
+				intQuery('price', 'Price in tokens, at most 1000; negative is ignored'),
 			],
 			responses: {
 				200: json(InventionSaveResult, 'The published invention, in the save envelope'),
+				400: json(ErrorResponse, 'A price over 1000'),
 				401: UNAUTHORIZED_RESPONSE,
 				403: json(ErrorResponse, 'Not the caller’s invention'),
 				404: { description: 'No such invention' },
@@ -1478,6 +1499,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 
 			const permissionLevel = c.req.query('permissionLevel')
 			const price = Number.parseInt(c.req.query('price') ?? '', 10)
+			if (price > MAX_INVENTION_PRICE)
+				return c.json({ error: `Price must be <= ${MAX_INVENTION_PRICE}` }, 400)
 
 			const published = await publishInvention(c.env.DB, gate.invention.InventionId, {
 				permissionLevel:
@@ -1497,12 +1520,12 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			summary: 'Set an invention’s price',
 			description:
 				'Unlike update/publish, this one POSTs a JSON body. Creator only; a negative price ' +
-				'is rejected.',
+				'is rejected, as is one over 1000 tokens (`MAX_INVENTION_PRICE`).',
 			security: AUTHED,
 			requestBody: jsonBody(UpdatePriceRequest, 'The invention and its new price'),
 			responses: {
 				200: json(InventionSaveResult, 'The repriced invention, in the save envelope'),
-				400: json(ErrorResponse, 'Unparseable body, or a price below 0'),
+				400: json(ErrorResponse, 'Unparseable body, or a price below 0 or over 1000'),
 				401: UNAUTHORIZED_RESPONSE,
 				403: json(ErrorResponse, 'Not the caller’s invention'),
 				404: { description: 'No such invention' },
@@ -1518,6 +1541,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 
 			const price = typeof body.Price === 'number' ? body.Price : Number.NaN
 			if (Number.isNaN(price) || price < 0) return c.json({ error: 'Price must be >= 0' }, 400)
+			if (price > MAX_INVENTION_PRICE)
+				return c.json({ error: `Price must be <= ${MAX_INVENTION_PRICE}` }, 400)
 
 			const updated = await setInventionPrice(c.env.DB, gate.invention.InventionId, price)
 			return updated === null ? c.notFound() : c.json(toSaveResult(updated))
@@ -2249,7 +2274,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 				'keeps it out of browse and search. A null `Price` leaves the price alone rather ' +
 				'than zeroing it, so re-publishing something that was for sale doesn’t give it ' +
 				'away; every field but `InventionId` is nullable and an omitted one keeps what ' +
-				'the invention has.\n\n' +
+				'the invention has. A price over 1000 tokens (`MAX_INVENTION_PRICE`) refuses the ' +
+				'publish in-band.\n\n' +
 				'Publishing is not undone here, and re-publishing doesn’t re-date the first ' +
 				'publish. Refusals answer `Success: false` with a null `Value`, the way ' +
 				'`v9/save` does.',
@@ -2287,6 +2313,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			const int = (key: string): number | undefined =>
 				typeof body[key] === 'number' && Number.isInteger(body[key]) ? body[key] : undefined
 			const price = int('Price')
+			if (price !== undefined && price > MAX_INVENTION_PRICE)
+				return c.json(inventionSaveV9Failure(`Price must be <= ${MAX_INVENTION_PRICE}`))
 
 			const published = await publishInvention(c.env.DB, gate.invention.InventionId, {
 				permissionLevel: int('Permission'),

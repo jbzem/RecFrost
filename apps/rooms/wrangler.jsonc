@@ -22,13 +22,10 @@
 	// Shared `recflare-cdn` R2 bucket (also bound by the `cdn`/`storage` workers).
 	// Room images/files live here under `room/`; bound so deleting a room removes its
 	// image object. bucket_name is a literal, so nothing is spliced at deploy time.
-	// RecFrost fork: R2 is disabled — this binds a KV namespace under the same
-	// name and the entry wraps it with withR2OverKv (see r2-kv.ts). "local"
-	// id is replaced from RECFLARE_KV at deploy time.
-	"kv_namespaces": [
+	"r2_buckets": [
 		{
 			"binding": "CDN_ASSETS",
-			"id": "local"
+			"bucket_name": "recflare-cdn"
 		}
 	],
 	// Cross-worker binding to the SignalR notifications hub DO (owned/migrated by

@@ -140,6 +140,30 @@ describe('playersettings endpoints', () => {
 		expect(stored).toEqual({ A: '1', B: '2' })
 	})
 
+	// KV writes are the cost here, and the client re-posts settings it already has at every
+	// login. The raw value is seeded with whitespace the worker's own JSON.stringify would
+	// never produce: if it survives the PUT, nothing was written.
+	it('PUT /playersettings does not write KV when the value is already stored', async () => {
+		const padded = '{ "PlayerSessionCount": "5", "Recroom.OOBE": "77" }'
+		await env.RECFLARE_PLAYER_SETTINGS.put('player:10', padded)
+
+		const same = await SELF.fetch(
+			`${ORIGIN}/playersettings`,
+			putForm({ key: 'PlayerSessionCount', value: '5' }, await bearer('10'))
+		)
+		expect(same.status).toBe(200)
+		expect(await env.RECFLARE_PLAYER_SETTINGS.get('player:10', 'text')).toBe(padded)
+
+		// A real change is still written — and compacted, which is how we know.
+		await SELF.fetch(
+			`${ORIGIN}/playersettings`,
+			putForm({ key: 'PlayerSessionCount', value: '6' }, await bearer('10'))
+		)
+		expect(await env.RECFLARE_PLAYER_SETTINGS.get('player:10', 'text')).toBe(
+			JSON.stringify({ PlayerSessionCount: '6', 'Recroom.OOBE': '77' })
+		)
+	})
+
 	it('PUT /playersettings 200s with no parseable settings', async () => {
 		const res = await SELF.fetch(`${ORIGIN}/playersettings`, putForm({}, await bearer('9')))
 		expect(res.status).toBe(200)

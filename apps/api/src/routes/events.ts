@@ -23,9 +23,11 @@ import {
 	getEventTags,
 	getGoingPlayerIds,
 	getLiveEvents,
+	getPublicEventsByPlayer,
 	inviteToEvent,
 	isEventResponseType,
 	parseEventBody,
+	parseEventSort,
 	parseEventTags,
 	parseEventTime,
 	searchEvents,
@@ -63,6 +65,7 @@ import {
 	PlayerEventsPage,
 	PlayerEventTagsRequest,
 	PlayerEventTimeRequest,
+	PlayerPublicEvents,
 	stringQuery,
 	SuccessErrorEnvelope,
 	TagFilters,
@@ -446,6 +449,31 @@ export const eventRoutes = new Hono<App>({ strict: false })
 		}
 	)
 
+	// Another player's events, as their profile shows them: PUBLIC events only, and under
+	// `Responses` only the ones they are attending (Going). Public. Unlike the caller's own
+	// `/all` above, both keys carry the client's 17-key base event, and a `Responses` entry
+	// is a PAIR — the event beside the RSVP record.
+	.get(
+		'/api/playerevents/v1/all/:playerId{[0-9]+}',
+		describeRoute({
+			tags: ['Events'],
+			summary: 'A player’s public events',
+			description:
+				'The events on a player’s profile: the PUBLIC ones they created (`Created`) and ' +
+				'the PUBLIC ones they are attending (`Responses`), each soonest first. Public (no ' +
+				'auth); finished events are left out, and a player with none — or an unknown id — ' +
+				'gets two empty lists.\n\n' +
+				'Events are the client’s 17-key BASE event, as on the browse feed. A `Responses` ' +
+				'entry is a pair, `{ PlayerEvent, PlayerEventResponse }`, and only Going RSVPs ' +
+				'(`Type` 0) are listed — a maybe, a decline or an unanswered invitation is not ' +
+				'attending. A creator is Going to their own event, so it appears under both keys.',
+			parameters: [idParam('playerId', 'Player id')],
+			responses: { 200: json(PlayerPublicEvents, 'The player’s public events') },
+		}),
+		async (c) =>
+			c.json(await getPublicEventsByPlayer(c.env.DB, Number.parseInt(c.req.param('playerId'), 10)))
+	)
+
 	// The tag filter chips on the player-events browse screen. Static: these are the
 	// categories the client offers when creating an event, so the list doesn't depend on
 	// what's stored. `TrendingFilters` is null even in the reference — it needs
@@ -600,14 +628,15 @@ export const eventRoutes = new Hono<App>({ strict: false })
 				'match and the two kinds combine, so `#workshops trigonometry` is the ' +
 				'workshops-tagged events whose text also mentions trigonometry.\n\n' +
 				'Events that have already finished are left out — a name match on something that ' +
-				'ended last month is noise on a browse screen. Soonest first, paginated via ' +
+				'ended last month is noise on a browse screen. Ordered by `sort` and paginated via ' +
 				'skip/take. A bare array.',
 			parameters: [
 				stringQuery('query', 'Search terms; `#tag` matches a tag, anything else the text'),
 				stringQuery(
 					'sort',
-					'Accepted and echoed by the client as `StartTime`, which is the only order ' +
-						'served (soonest first); any other value sorts the same way'
+					'`StartTime` (soonest first, the default) or `Attendance` (most Going replies ' +
+						'first — the event’s `AttendeeCount` — ties soonest first). Case-insensitive; ' +
+						'any other value is served as `StartTime`'
 				),
 				...pageParams(50),
 			],
@@ -616,7 +645,15 @@ export const eventRoutes = new Hono<App>({ strict: false })
 		async (c) => {
 			const skip = Number.parseInt(c.req.query('skip') ?? '', 10) || 0
 			const take = Number.parseInt(c.req.query('take') ?? '', 10) || 50
-			return c.json(await searchEvents(c.env.DB, c.req.query('query') ?? '', skip, take))
+			return c.json(
+				await searchEvents(
+					c.env.DB,
+					c.req.query('query') ?? '',
+					skip,
+					take,
+					parseEventSort(c.req.query('sort'))
+				)
+			)
 		}
 	)
 

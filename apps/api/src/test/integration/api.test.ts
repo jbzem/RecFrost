@@ -38,11 +38,15 @@ import {
 	SYSTEM_SENDER_ID,
 	THREAD_SCHEMA_DDL,
 } from '../../../../chat/src/thread-db'
+import priceCapSql from '../../../migrations/0032_custom_avatar_item_price_cap.sql?raw'
+import inventionPriceCapSql from '../../../migrations/0033_invention_price_cap.sql?raw'
 import { banEvasionMatch, resolveBan } from '../../bans-db'
 import {
 	createCustomAvatarItem,
 	SCHEMA_DDL as CUSTOM_AVATAR_ITEM_SCHEMA_DDL,
+	getCustomAvatarItem,
 	importCustomAvatarItem,
+	MAX_PLAYER_ITEM_PRICE,
 } from '../../custom-avatar-items-db'
 import { customAvatarItemRowLiteral } from '../../custom-avatar-items-load'
 import {
@@ -51,7 +55,7 @@ import {
 	getEventAttendees,
 	getEventResponse,
 } from '../../events-db'
-import { SCHEMA_DDL as INVENTIONS_SCHEMA_DDL } from '../../inventions-db'
+import { SCHEMA_DDL as INVENTIONS_SCHEMA_DDL, MAX_INVENTION_PRICE } from '../../inventions-db'
 import {
 	banFromReport,
 	createReport,
@@ -933,6 +937,13 @@ describe('public endpoints', () => {
 		expect(config.LevelProgressionMaps.map((m) => m.Level)).toEqual(
 			LEVEL_REQUIRED_XP.map((_, level) => level)
 		)
+	})
+
+	test('the config carries the room key limit', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/api/config/v2`)
+		expect(res.status).toBe(200)
+		const config = (await res.json()) as { RoomKeyConfig: { MaxKeysPerRoom: number } }
+		expect(config.RoomKeyConfig).toEqual({ MaxKeysPerRoom: 10 })
 	})
 
 	test('the level rewards match the published reward table', async () => {
@@ -2055,12 +2066,12 @@ describe('public endpoints', () => {
 		expect(res.status).toBe(400)
 	})
 
-	test('GET /api/progressionEvents/active is an empty list (no auth)', async () => {
-		// The client reads an empty list as "no event running" and skips the event UI; a 404
-		// would stall its load instead.
+	test('GET /api/progressionEvents/active is a bare 0 (no auth)', async () => {
+		// 0 is the "no active event" value; the client reads it as "no event running" and
+		// skips the event UI. A 404 would stall its load instead.
 		const res = await exports.default.fetch(`${ORIGIN}/api/progressionEvents/active`)
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual([])
+		expect(await res.json()).toBe(0)
 	})
 
 	test('GET /api/rooms/v1/filters returns an object with filter arrays', async () => {
@@ -2852,6 +2863,20 @@ describe('public endpoints', () => {
 
 		// A negative price is dropped rather than stored.
 		expect((await publish({ Price: -5 })).Price).toBe(250)
+
+		// One over the cap refuses the publish in-band, and the price stands.
+		const over = await exports.default.fetch(`${ORIGIN}/api/inventions/v4/publish`, {
+			method: 'POST',
+			headers: { ...(await bearer('5172')), 'Content-Type': 'application/json' },
+			body: JSON.stringify({ InventionId: inventionId, Price: 1001 }),
+		})
+		expect(over.status).toBe(200)
+		expect(await over.json()).toMatchObject({
+			Success: false,
+			Value: null,
+			Error: 'Price must be <= 1000',
+		})
+		expect((await publish({ Price: 1000 })).Price).toBe(1000)
 
 		// Out of the published catalogue again — see the note in the publish test above.
 		await env.DB.prepare('DELETE FROM invention WHERE id = ?1').bind(inventionId).run()
@@ -4130,6 +4155,21 @@ describe('public endpoints', () => {
 
 		expect(await search()).toEqual([Invention.InventionId])
 
+		// A price over the cap refuses the whole publish, leaving the invention as it was.
+		const over = await exports.default.fetch(
+			`${ORIGIN}/api/inventions/v3/publish?inventionId=${Invention.InventionId}&price=1001`,
+			{ headers: await bearer('2121') }
+		)
+		expect(over.status).toBe(400)
+		expect(await over.json()).toEqual({ error: 'Price must be <= 1000' })
+		expect(
+			(await env.DB.prepare(
+				`SELECT json_extract(data, '$.Price') AS price FROM invention WHERE id = ?1`
+			)
+				.bind(Invention.InventionId)
+				.first<{ price: number }>())!.price
+		).toBe(250)
+
 		// Publishing with no permissionLevel defaults to UseOnly, and price to 0.
 		const other = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
 			method: 'POST',
@@ -4182,6 +4222,59 @@ describe('public endpoints', () => {
 		expect(
 			(await updateprice({ InventionId: Invention.InventionId, Price: 10 }, '9999')).status
 		).toBe(403)
+
+		// Capped at MAX_INVENTION_PRICE, inclusive: one over is refused and the price stands.
+		expect(MAX_INVENTION_PRICE).toBe(1000)
+		const over = await updateprice({ InventionId: Invention.InventionId, Price: 1001 })
+		expect(over.status).toBe(400)
+		expect(await over.json()).toEqual({ error: 'Price must be <= 1000' })
+		const atCap = await updateprice({ InventionId: Invention.InventionId, Price: 1000 })
+		expect(atCap.status).toBe(200)
+		expect(((await atCap.json()) as InventionSaveResult).Invention.Price).toBe(1000)
+	})
+
+	// The cap arrived after creators had priced inventions. Migration 0033 lowers every row
+	// over it to exactly the cap, published or not, and leaves the rest alone. Tests build the
+	// schema from SCHEMA_DDL rather than the migrations, so the file's UPDATE is run by hand.
+	test('migration 0033 lowers existing invention prices to the cap', async () => {
+		const make = async (name: string, price: number): Promise<number> => {
+			const save = await exports.default.fetch(`${ORIGIN}/api/inventions/v6/save`, {
+				method: 'POST',
+				headers: { ...(await bearer('1213')), 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, inventionDataFilename: 'a.inv' }),
+			})
+			const id = ((await save.json()) as InventionSaveResult).Invention.InventionId
+			// Written straight into the row: no endpoint will store this any more.
+			await env.DB.prepare(
+				`UPDATE invention SET data = json_set(data, '$.Price', ?2) WHERE id = ?1`
+			)
+				.bind(id, price)
+				.run()
+			return id
+		}
+		const dear = await make('Dear Lamp', 25000)
+		const fair = await make('Fair Lamp', 1000)
+		const cheap = await make('Cheap Lamp', 50)
+
+		const statements = inventionPriceCapSql
+			.split('\n')
+			.filter((line) => !line.startsWith('--'))
+			.join('\n')
+			.split(';')
+			.map((sql) => sql.trim())
+			.filter(Boolean)
+		expect(statements).toHaveLength(1)
+		await env.DB.prepare(statements[0]!).run()
+
+		const price = async (id: number): Promise<number> =>
+			(await env.DB.prepare(
+				`SELECT json_extract(data, '$.Price') AS price FROM invention WHERE id = ?1`
+			)
+				.bind(id)
+				.first<{ price: number }>())!.price
+		expect(await price(dear)).toBe(1000)
+		expect(await price(fair)).toBe(1000)
+		expect(await price(cheap)).toBe(50)
 	})
 
 	test('GET /api/inventions/v1/fromcreators is an empty feed for now', async () => {
@@ -4597,6 +4690,150 @@ describe('custom avatar items', () => {
 		expect(bad.status).toBe(400)
 		expect(await bad.json()).toMatchObject({ Success: false, Value: null })
 		expect(await (await exports.default.fetch(url, { method: 'PUT' })).status).toBe(401)
+	})
+
+	// A player-made item may not sell for more than MAX_PLAYER_ITEM_PRICE (1000) tokens. The
+	// client has no ceiling of its own (`minPriceForPublicItem` is a floor), so both writes a
+	// player has enforce it — refusing, not clamping, so the creator sees what was set.
+	test('the price is capped at 1000 tokens on create and edit', async () => {
+		expect(MAX_PLAYER_ITEM_PRICE).toBe(1000)
+		const create = async (Price: unknown) => {
+			const form = new FormData()
+			form.set(
+				'metadata',
+				JSON.stringify({ Name: 'Pricey', BaseAvatarItemId: 1, BaseAvatarItemColor: '#fff', Price })
+			)
+			form.set('thumbnailImage', new File([new Uint8Array([1])], 't.png', { type: 'image/png' }))
+			form.set('design', new File([new Uint8Array([2])], 'd.png', { type: 'image/png' }))
+			return exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1`, {
+				method: 'POST',
+				headers: await bearer('205'),
+				body: form,
+			})
+		}
+		const over = await create(1001)
+		expect(over.status).toBe(400)
+		expect(await over.json()).toMatchObject({
+			Success: false,
+			Value: null,
+			Error: 'Price must be <= 1000',
+		})
+		expect((await create(-1)).status).toBe(400)
+		expect((await create(10.5)).status).toBe(400)
+		// Nothing was written for the refused ones.
+		expect(
+			await env.DB.prepare(
+				`SELECT count(*) AS n FROM custom_avatar_item WHERE name_lower = 'pricey'`
+			)
+				.first<{ n: number }>()
+				.then((r) => r!.n)
+		).toBe(0)
+
+		// The cap itself is allowed, inclusive; a missing price is still 0.
+		const atCap = await create(1000)
+		expect(atCap.status).toBe(200)
+		const { Value } = (await atCap.json()) as {
+			Value: { CustomAvatarItemId: string; Price: number }
+		}
+		expect(Value.Price).toBe(1000)
+		expect(
+			((await (await create(undefined)).json()) as { Value: { Price: number } }).Value.Price
+		).toBe(0)
+
+		// The edit is bound the same way, and a refused edit leaves the row as it was.
+		const url = `${ORIGIN}/api/customAvatarItems/v1/${Value.CustomAvatarItemId}`
+		const edit = async (Price: number) =>
+			exports.default.fetch(url, {
+				method: 'PUT',
+				headers: { ...(await bearer('205')), 'content-type': 'application/json' },
+				body: JSON.stringify({ Name: null, Description: null, Price, Accessibility: null }),
+			})
+		const tooMuch = await edit(1001)
+		expect(tooMuch.status).toBe(400)
+		expect(await tooMuch.json()).toMatchObject({ Success: false, Error: 'Price must be <= 1000' })
+		expect((await edit(-1)).status).toBe(400)
+		expect((await getCustomAvatarItem(env.DB, Value.CustomAvatarItemId))!.Price).toBe(1000)
+		const lowered = await edit(999)
+		expect(lowered.status).toBe(200)
+		expect(((await lowered.json()) as { Value: { Price: number } }).Value.Price).toBe(999)
+	})
+
+	// The cap arrived after players had already priced shirts. Migration 0032 lowers every
+	// PLAYER-MADE row over it to exactly the cap and leaves first-party items — priced from the
+	// storefront dump, several above 1000 — alone; the two are told apart by `BaseAvatarItemId`.
+	// Tests build the schema from SCHEMA_DDL rather than the migrations, so the file's UPDATE
+	// is run here by hand.
+	test('migration 0032 lowers existing player-made prices to the cap', async () => {
+		const shirt = (name: string, price: number) =>
+			createCustomAvatarItem(
+				env.DB,
+				{
+					customAvatarItemId: crypto.randomUUID(),
+					creatorAccountId: 205,
+					name,
+					description: '',
+					price,
+					baseAvatarItemId: 1,
+					baseAvatarItemColor: '#fff',
+					accessibility: 1,
+					designFilename: 'd',
+					thumbnailImageFilename: 't',
+				},
+				new Date('2026-08-01T00:00:00Z')
+			)
+		const dear = await shirt('Dear', 5000)
+		const fair = await shirt('Fair', 1000)
+		const cheap = await shirt('Cheap', 50)
+		// A first-party item over the cap: no base item, Coach-authored.
+		const firstPartyId = crypto.randomUUID()
+		await importCustomAvatarItem(env.DB, {
+			CustomAvatarItemId: firstPartyId,
+			RankedEntityId: firstPartyId,
+			CreatorAccountId: 1,
+			Name: 'Studio Wings',
+			Description: '',
+			Price: 6000,
+			Accessibility: 1,
+			OutfitType: 100,
+			BaseAvatarItemId: null,
+			BaseAvatarItemColor: null,
+			DesignFilename: null,
+			ThumbnailImageFilename: null,
+			ForceCannotPublish: false,
+			IsFeatured: false,
+			IsRecRoomApproved: true,
+			PreviewOrientation: 0,
+			RankingContext: null,
+			CreatedAt: '2024-09-26T21:32:48.523Z',
+			ModifiedAt: '2025-02-19T05:19:28.328Z',
+			CurrentSaves: [],
+			Tags: [],
+			CustomBadgeMetadata: null,
+		})
+
+		const statements = priceCapSql
+			.split('\n')
+			.filter((line) => !line.startsWith('--'))
+			.join('\n')
+			.split(';')
+			.map((sql) => sql.trim())
+			.filter(Boolean)
+		expect(statements).toHaveLength(1)
+		await env.DB.prepare(statements[0]!).run()
+
+		const price = async (id: string) => (await getCustomAvatarItem(env.DB, id))!
+		expect((await price(dear.CustomAvatarItemId)).Price).toBe(1000)
+		// The lowered row is marked modified, as an edit would mark it; the untouched ones aren't.
+		expect((await price(dear.CustomAvatarItemId)).ModifiedAt).not.toBe(dear.ModifiedAt)
+		expect(await price(fair.CustomAvatarItemId)).toMatchObject({
+			Price: 1000,
+			ModifiedAt: fair.ModifiedAt,
+		})
+		expect(await price(cheap.CustomAvatarItemId)).toMatchObject({
+			Price: 50,
+			ModifiedAt: cheap.ModifiedAt,
+		})
+		expect((await price(firstPartyId)).Price).toBe(6000)
 	})
 
 	test('DELETE removes the creator’s item and its bucket objects', async () => {
@@ -6008,17 +6245,16 @@ describe('player reports', () => {
 			expect(res.status).toBe(401)
 		})
 
-		// Duration and TimeoutStartedAt are a pair in the client — the block runs from the
-		// start for the duration. The start is `banned_at`, the instant the ban was handed
-		// down (see 0020_report_ban_audit.sql), NOT the report's created_at: the two can be
-		// months apart. A permanent ban runs for the largest span the int holds.
+		// `Duration` is the seconds LEFT — the client counts it down from receipt. A permanent
+		// ban runs for the largest span the int holds, and `TimeoutStartedAt` stays null: the
+		// client does not pair it with `Duration` for a ban.
 		test('describes a permanent ban', async () => {
 			await submit(
 				{ PlayerIdReported: '221', ReportCategory: '102', Details: 'slurs' },
 				await bearer()
 			)
 			const [row] = await getReportsAgainst(env.DB, 221)
-			const banned = await banFromReport(env.DB, row!.id)
+			await banFromReport(env.DB, row!.id)
 
 			expect(await details('POST', '221')).toEqual({
 				...NOT_BLOCKED,
@@ -6029,21 +6265,15 @@ describe('player reports', () => {
 				// the reporter is not shown to the player they reported (PlayerIdReporter
 				// stays null).
 				Message: 'Rule violation',
-				TimeoutStartedAt: banned!.banned_at,
 			})
 		})
 
-		// A timed ban's Duration is the seconds from the start to the expiry, so the pair
-		// sums to `ban_expires` — not the seconds left as of the request.
-		test('describes a timed ban as its banned_at plus the span to expiry', async () => {
+		// A fresh timed ban: the seconds left are (within the write's latency) the whole ban.
+		test('describes a timed ban as the seconds left as of the request', async () => {
 			await submit({ PlayerIdReported: '222', ReportCategory: '103' }, await bearer())
 			const [row] = await getReportsAgainst(env.DB, 222)
-			// The expiry is set relative to NOW, which is what a moderator handing down a
-			// one-hour ban means — and now is `banned_at`, not the report's created_at.
 			const banExpires = new Date(Date.now() + 3600 * 1000)
-			const banned = await banFromReport(env.DB, row!.id, {
-				banExpires: banExpires.toISOString(),
-			})
+			await banFromReport(env.DB, row!.id, { banExpires: banExpires.toISOString() })
 
 			// `Duration` is asserted as a range below, so it is left out of the object match
 			// — NOT_BLOCKED carries a 0 for it, which would win over the real value.
@@ -6054,59 +6284,59 @@ describe('player reports', () => {
 				ReportCategory: 103,
 				IsBan: true,
 				Message: 'Rule violation',
-				TimeoutStartedAt: banned!.banned_at,
+				TimeoutStartedAt: null,
 			})
-			// Within a second of the hour: `banned_at` is stamped by the write, so the span
-			// is the hour minus however long the write took.
+			// Within a second of the hour: however long the write took has already elapsed.
 			expect(body.Duration).toBeGreaterThan(3595)
 			expect(body.Duration).toBeLessThanOrEqual(3600)
 		})
 
-		// The whole point of `banned_at`: a ban applied to an OLD report used to be
-		// described as having started when the report was filed, so a 7-day ban on a
-		// month-old report told the player their block began a month ago — and the duration,
-		// measured from there, came out as already served. Both halves of the pair now
-		// start from the ban.
-		test('counts a ban from when it was handed down, not from when the report was filed', async () => {
+		// The case the bug lived in: a player signing in AFTER the ban was handed down. The
+		// client counts `Duration` down from the moment it receives it, so it must be what is
+		// left NOW — not the ban's full span from `banned_at`, which read as the whole ban
+		// still to run at every sign-in (and only looked right in the mid-session kick frame,
+		// sent at the instant the span and the remainder are the same).
+		test('counts down: a ban handed down a day ago has a day less to run', async () => {
 			await submit({ PlayerIdReported: '224', ReportCategory: '102' }, await bearer())
 			const [row] = await getReportsAgainst(env.DB, 224)
-			// Backdate the report a month, as if it had sat in the queue.
-			const filed = new Date(Date.now() - 30 * 86_400_000).toISOString()
-			await env.DB.prepare('UPDATE report SET created_at = ?2 WHERE id = ?1')
-				.bind(row!.id, filed)
+			// A seven-day ban handed down yesterday: six days left.
+			const banned = await banFromReport(env.DB, row!.id, {
+				banExpires: new Date(Date.now() + 6 * 86_400_000).toISOString(),
+			})
+			await env.DB.prepare('UPDATE report SET banned_at = ?2 WHERE id = ?1')
+				.bind(row!.id, new Date(Date.now() - 86_400_000).toISOString())
 				.run()
 
-			const banned = await banFromReport(env.DB, row!.id, {
-				banExpires: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-			})
 			const body = (await details('GET', '224')) as Record<string, unknown>
-			expect(body.TimeoutStartedAt).toBe(banned!.banned_at)
-			expect(body.TimeoutStartedAt).not.toBe(filed)
-			// Seven days, not the negative-then-clamped span the report's date would give.
-			expect(body.Duration).toBeGreaterThan(7 * 86_400 - 5)
-			expect(body.Duration).toBeLessThanOrEqual(7 * 86_400)
+			expect(body.IsBan).toBe(true)
+			expect(body.Duration).toBeGreaterThan(6 * 86_400 - 5)
+			expect(body.Duration).toBeLessThanOrEqual(6 * 86_400)
+			// The start is not on the wire at all: null, not `banned_at`.
+			expect(body.TimeoutStartedAt).toBeNull()
+			expect(banned!.banned_at).not.toBeNull()
 		})
 
-		// A row banned BEFORE 0020 added the column carries no `banned_at`, and must keep
-		// reading exactly as it used to rather than falling back to "now" — which would
-		// silently restart every standing ban the moment this shipped.
-		test('falls back to created_at for a ban with no recorded banned_at', async () => {
+		// A row banned BEFORE 0020 added `banned_at` reads the same as any other: the
+		// remainder needs only `ban_expires`.
+		test('reads a ban with no recorded banned_at the same way', async () => {
 			await submit({ PlayerIdReported: '225', ReportCategory: '101' }, await bearer())
 			const [row] = await getReportsAgainst(env.DB, 225)
 			await env.DB.prepare(
 				`UPDATE report SET banned = 1, ban_expires = ?2, banned_at = NULL WHERE id = ?1`
 			)
-				.bind(row!.id, new Date(Date.parse(row!.created_at) + 3600 * 1000).toISOString())
+				.bind(row!.id, new Date(Date.now() + 3600 * 1000).toISOString())
 				.run()
 
-			expect(await details('GET', '225')).toEqual({
-				...NOT_BLOCKED,
+			const { Duration: _duration, ...unblocked } = NOT_BLOCKED
+			const body = (await details('GET', '225')) as Record<string, unknown>
+			expect(body).toMatchObject({
+				...unblocked,
 				ReportCategory: 101,
-				Duration: 3600,
 				IsBan: true,
 				Message: 'Rule violation',
-				TimeoutStartedAt: row!.created_at,
 			})
+			expect(body.Duration).toBeGreaterThan(3595)
+			expect(body.Duration).toBeLessThanOrEqual(3600)
 		})
 
 		// A ban that has served its time is not a block, even though the row still says
@@ -6320,6 +6550,37 @@ describe('images', () => {
 		})
 	})
 
+	// The feed is anonymous, so a private photo (Accessibility 0) must never reach it —
+	// there is no viewer it could be unlocked for. It once accepted 0 alongside 1.
+	test('GET /api/images/v1/slideshow leaves private photos out', async () => {
+		const pub = await createImage(env.DB, {
+			imageName: 'slidepublic.jpg',
+			playerId: 42,
+			accessibility: 1,
+		})
+		const priv = await createImage(env.DB, {
+			imageName: 'slideprivate.jpg',
+			playerId: 42,
+			accessibility: 0,
+		})
+		// A non-photo (room thumbnail) that happens to be public stays out too.
+		const thumb = await createImage(env.DB, {
+			imageName: 'slidethumb.jpg',
+			playerId: 42,
+			type: 3,
+			accessibility: 1,
+		})
+
+		const res = await exports.default.fetch(`${ORIGIN}/api/images/v1/slideshow?take=100`)
+		expect(res.status).toBe(200)
+		const ids = ((await res.json()) as { Images: Array<{ SavedImageId: number }> }).Images.map(
+			(i) => i.SavedImageId
+		)
+		expect(ids).toContain(pub.Id)
+		expect(ids).not.toContain(priv.Id)
+		expect(ids).not.toContain(thumb.Id)
+	})
+
 	// The feed is public and unauthenticated, so `take` is clamped rather than trusted:
 	// without the cap a single anonymous request could pull the whole image table through
 	// the two joins behind it.
@@ -6480,6 +6741,13 @@ describe('images', () => {
 
 		// The setting is per-player.
 		expect(await (await read('710')).text()).toBe('2')
+
+		// Re-posting the stored value writes nothing to KV: the raw value is seeded with
+		// whitespace JSON.stringify never produces, and it survives the PUT untouched.
+		const padded = '{ "Recroom.OOBE": "77", "playerPhotoTaggingSetting": "1" }'
+		await env.RECFLARE_PLAYER_SETTINGS.put('player:712', padded)
+		expect(await (await write('712', { Setting: 1 })).text()).toBe('1')
+		expect(await env.RECFLARE_PLAYER_SETTINGS.get('player:712', 'text')).toBe(padded)
 
 		// A body with no readable Setting leaves the stored value alone rather than writing 0
 		// — and answers what the player still has.
@@ -6694,7 +6962,7 @@ describe('images', () => {
 		expect(JSON.parse(row!.data).profileImage).toBe(ImageName)
 	})
 
-	test('DELETE /api/images/v1/deletesaved removes the owner’s image (row + cheers + R2)', async () => {
+	test('POST /api/images/v1/deletesaved removes the owner’s image (row + cheers + R2)', async () => {
 		const ImageName = 'sharecamera/2026-07-17/delete-me.jpg'
 		await env.IMAGES.put(ImageName, new Uint8Array([1, 2, 3]))
 		await env.DB.prepare('INSERT INTO image (data) VALUES (?1)')
@@ -6722,7 +6990,7 @@ describe('images', () => {
 
 		const del = (headers: Record<string, string>) =>
 			exports.default.fetch(`${ORIGIN}/api/images/v1/deletesaved`, {
-				method: 'DELETE',
+				method: 'POST',
 				headers: { 'Content-Type': 'application/json', ...headers },
 				body: JSON.stringify({ ImageName }),
 			})
@@ -6734,7 +7002,7 @@ describe('images', () => {
 
 		// Unknown image → 404.
 		const unknown = await exports.default.fetch(`${ORIGIN}/api/images/v1/deletesaved`, {
-			method: 'DELETE',
+			method: 'POST',
 			headers: { 'Content-Type': 'application/json', ...(await bearer('42')) },
 			body: JSON.stringify({ ImageName: 'sharecamera/nope.jpg' }),
 		})
@@ -6748,6 +7016,113 @@ describe('images', () => {
 			'SELECT COUNT(*) AS n FROM image_interaction WHERE saved_image_id = 8100'
 		).first<{ n: number }>()
 		expect(cheers!.n).toBe(0)
+	})
+
+	/** Seed one image row owned by the default bearer account (42). */
+	const seedOwnedImage = async (
+		Id: number,
+		ImageName: string,
+		extra: Record<string, unknown> = {}
+	) =>
+		env.DB.prepare('INSERT INTO image (data) VALUES (?1)')
+			.bind(
+				JSON.stringify({
+					Id,
+					Type: 1,
+					Accessibility: 1,
+					AccessibilityLocked: false,
+					ImageName,
+					Description: null,
+					PlayerId: 42,
+					TaggedPlayerIds: [],
+					RoomId: null,
+					PlayerEventId: null,
+					CreatedAt: new Date().toISOString(),
+					CheerCount: 0,
+					CommentCount: 0,
+					...extra,
+				})
+			)
+			.run()
+
+	const postImageJson = (path: string, headers: Record<string, string>, body: unknown) =>
+		exports.default.fetch(`${ORIGIN}${path}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', ...headers },
+			body: JSON.stringify(body),
+		})
+
+	test('POST /api/images/v2/modifyaccessibility flips the owner’s image and gates on the owner', async () => {
+		const ImageName = 'sharecamera/2026-09-13/flip-me.jpg'
+		await seedOwnedImage(8101, ImageName)
+		const path = '/api/images/v2/modifyaccessibility'
+
+		// No token → 401; a different account → 403; the image is untouched.
+		expect((await postImageJson(path, {}, { ImageName, Accessibility: 0 })).status).toBe(401)
+		expect(
+			(await postImageJson(path, await bearer('43'), { ImageName, Accessibility: 0 })).status
+		).toBe(403)
+		expect((await getImageByName(env.DB, ImageName))!.Accessibility).toBe(1)
+
+		// Unknown image → 404; a bad accessibility or no name → 400.
+		const owner = await bearer('42')
+		expect(
+			(await postImageJson(path, owner, { ImageName: 'sharecamera/nope.jpg', Accessibility: 0 }))
+				.status
+		).toBe(404)
+		expect((await postImageJson(path, owner, { ImageName, Accessibility: 7 })).status).toBe(400)
+		expect((await postImageJson(path, owner, { Accessibility: 0 })).status).toBe(400)
+
+		// Owner → 200 and the record is now private; back to 1 makes it public again.
+		const res = await postImageJson(path, owner, { ImageName, Accessibility: 0 })
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+		expect((await getImageByName(env.DB, ImageName))!.Accessibility).toBe(0)
+		expect((await postImageJson(path, owner, { ImageName, Accessibility: 1 })).status).toBe(200)
+		expect((await getImageByName(env.DB, ImageName))!.Accessibility).toBe(1)
+
+		// A locked image refuses even its owner.
+		const locked = 'sharecamera/2026-09-13/locked.jpg'
+		await seedOwnedImage(8102, locked, { AccessibilityLocked: true, Accessibility: 0 })
+		expect((await postImageJson(path, owner, { ImageName: locked, Accessibility: 1 })).status).toBe(
+			403
+		)
+		expect((await getImageByName(env.DB, locked))!.Accessibility).toBe(0)
+	})
+
+	test('POST /api/images/v1/modifydescription sets the owner’s caption and gates on the owner', async () => {
+		const ImageName = 'sharecamera/2026-09-13/caption-me.jpg'
+		await seedOwnedImage(8103, ImageName)
+		const path = '/api/images/v1/modifydescription'
+
+		// No token → 401; a different account → 403; the caption is untouched.
+		expect((await postImageJson(path, {}, { ImageName, Description: 'x' })).status).toBe(401)
+		expect(
+			(await postImageJson(path, await bearer('43'), { ImageName, Description: 'x' })).status
+		).toBe(403)
+		expect((await getImageByName(env.DB, ImageName))!.Description).toBeNull()
+
+		// Unknown image → 404; a non-string description or no name → 400.
+		const owner = await bearer('42')
+		expect(
+			(await postImageJson(path, owner, { ImageName: 'sharecamera/nope.jpg', Description: 'x' }))
+				.status
+		).toBe(404)
+		expect((await postImageJson(path, owner, { ImageName, Description: 5 })).status).toBe(400)
+		expect((await postImageJson(path, owner, { Description: 'x' })).status).toBe(400)
+
+		// Owner → 200 and the caption is stored; the rest of the record is untouched.
+		const res = await postImageJson(path, owner, { ImageName, Description: 'tet' })
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+		const after = await getImageByName(env.DB, ImageName)
+		expect(after!.Description).toBe('tet')
+		expect(after!.Accessibility).toBe(1)
+		expect(after!.PlayerId).toBe(42)
+
+		// An empty description clears the caption back to null.
+		expect((await postImageJson(path, owner, { ImageName, Description: '' })).status).toBe(200)
+		expect((await getImageByName(env.DB, ImageName))!.Description).toBeNull()
 	})
 
 	test('POST /api/images/v4/uploadsaved 401s without a bearer token', async () => {
@@ -8309,6 +8684,71 @@ describe('player events', () => {
 		expect(await search('?skip=1&take=1')).toEqual([all[1]])
 	})
 
+	test('GET /api/playerevents/v1/search?sort=Attendance ranks by Going replies', async () => {
+		const search = async (qs: string): Promise<PlayerEvent[]> =>
+			(await (await get(`/api/playerevents/v1/search${qs}`)).json()) as PlayerEvent[]
+		const respond = (id: number, type: number, sub: string): Promise<Response> =>
+			post('/api/playerevents/v1/respond', { PlayerEventId: id, Type: type }, sub)
+
+		// Three events sharing a searchable word, created soonest-first so the default
+		// order is the OPPOSITE of the attendance order — the sort has to do something.
+		const quiet = await create({ RoomId: 3, Name: 'Sortable Quiet', StartTime: at(2 * HOUR) })
+		const busy = await create({ RoomId: 3, Name: 'Sortable Busy', StartTime: at(3 * HOUR) })
+		const packed = await create({ RoomId: 3, Name: 'Sortable Packed', StartTime: at(4 * HOUR) })
+		// Every creator is Going from create (1 each). `busy` gains one more Going; `packed`
+		// gains two. Interested and Can't-go on `quiet` don't move it: only a Yes counts.
+		for (const [id, type, sub] of [
+			[busy.PlayerEventId, 0, '43'],
+			[packed.PlayerEventId, 0, '43'],
+			[packed.PlayerEventId, 0, '44'],
+			[quiet.PlayerEventId, 1, '43'],
+			[quiet.PlayerEventId, 1, '44'],
+			[quiet.PlayerEventId, 2, '45'],
+		] as const) {
+			expect((await respond(id, type, sub)).status).toBe(200)
+		}
+
+		// Default and `StartTime`: soonest first.
+		const soonest = [quiet.PlayerEventId, busy.PlayerEventId, packed.PlayerEventId]
+		expect((await search('?query=sortable')).map((e) => e.PlayerEventId)).toEqual(soonest)
+		expect((await search('?query=sortable&sort=StartTime')).map((e) => e.PlayerEventId)).toEqual(
+			soonest
+		)
+
+		// `Attendance`: most Going first (3, 2, 1), case-insensitively.
+		const byAttendance = await search('?query=sortable&sort=Attendance')
+		expect(byAttendance.map((e) => e.PlayerEventId)).toEqual([
+			packed.PlayerEventId,
+			busy.PlayerEventId,
+			quiet.PlayerEventId,
+		])
+		expect(byAttendance.map((e) => e.AttendeeCount)).toEqual([3, 2, 1])
+		expect((await search('?query=sortable&sort=attendance')).map((e) => e.PlayerEventId)).toEqual(
+			byAttendance.map((e) => e.PlayerEventId)
+		)
+
+		// A tie in attendance falls back to soonest first: another 1-Going event, later
+		// than `quiet`, lands after it.
+		const late = await create({ RoomId: 3, Name: 'Sortable Late', StartTime: at(5 * HOUR) })
+		expect((await search('?query=sortable&sort=Attendance')).map((e) => e.PlayerEventId)).toEqual([
+			packed.PlayerEventId,
+			busy.PlayerEventId,
+			quiet.PlayerEventId,
+			late.PlayerEventId,
+		])
+
+		// Paging walks the sorted order, and an unknown sort is the default, not a 400.
+		expect(await search('?query=sortable&sort=Attendance&skip=1&take=1')).toEqual([
+			byAttendance[1],
+		])
+		const unknown = await get('/api/playerevents/v1/search?query=sortable&sort=Popularity')
+		expect(unknown.status).toBe(200)
+		expect(((await unknown.json()) as PlayerEvent[]).map((e) => e.PlayerEventId)).toEqual([
+			...soonest,
+			late.PlayerEventId,
+		])
+	})
+
 	test('GET /api/playerevents/v1 serves the browse feed as listings', async () => {
 		const res = await get('/api/playerevents/v1')
 		expect(res.status).toBe(200)
@@ -8527,6 +8967,77 @@ describe('player events', () => {
 			Created: PlayerEvent[]
 		}
 		expect(theirs.Created.map((e) => e.PlayerEventId)).toEqual([liveEvent.PlayerEventId])
+	})
+
+	test('GET /api/playerevents/v1/all/:playerId serves a player’s PUBLIC events and Going RSVPs', async () => {
+		const respond = (id: number, type: number, sub: string): Promise<Response> =>
+			post('/api/playerevents/v1/respond', { PlayerEventId: id, Type: type }, sub)
+		interface Profile {
+			Created: PlayerEvent[]
+			Responses: Array<{
+				PlayerEvent: Record<string, unknown>
+				PlayerEventResponse: Record<string, unknown>
+			}>
+		}
+		const profile = async (playerId: number | string): Promise<Profile> => {
+			// No token: the read is public.
+			const res = await get(`/api/playerevents/v1/all/${playerId}`)
+			expect(res.status).toBe(200)
+			return (await res.json()) as Profile
+		}
+
+		// 610 hosts a public event, a private one and a finished one; 611 is Going to the
+		// first two, Interested in a third public one, and went to the finished one.
+		const open = await create({ RoomId: 3, Name: 'Profile Open', StartTime: at(2 * HOUR) }, '610')
+		const closed = await create(
+			{ RoomId: 3, Name: 'Profile Closed', StartTime: at(3 * HOUR), Accessibility: 0 },
+			'610'
+		)
+		const maybe = await create({ RoomId: 3, Name: 'Profile Maybe', StartTime: at(HOUR) }, '610')
+		const over = await create(
+			{ RoomId: 3, Name: 'Profile Over', StartTime: at(-3 * HOUR), EndTime: at(-2 * HOUR) },
+			'610'
+		)
+		await respond(open.PlayerEventId, 0, '611')
+		await respond(closed.PlayerEventId, 0, '611')
+		await respond(maybe.PlayerEventId, 1, '611')
+		await respond(over.PlayerEventId, 0, '611')
+
+		// The attendee: exactly the public event they are Going to, as the pair.
+		const guest = await profile(611)
+		expect(guest.Created).toEqual([])
+		expect(guest.Responses).toHaveLength(1)
+		const [entry] = guest.Responses
+		expect(Object.keys(entry).sort()).toEqual(['PlayerEvent', 'PlayerEventResponse'])
+		expect(entry.PlayerEventResponse).toEqual({
+			PlayerEventResponseId: expect.any(Number),
+			PlayerEventId: open.PlayerEventId,
+			PlayerId: 611,
+			CreatedAt: expect.any(String),
+			Type: 0,
+		})
+		// The 17-key base event: no `State`, `ImageName` a string, the broadcast key present.
+		expect(Object.keys(entry.PlayerEvent)).toHaveLength(17)
+		expect(entry.PlayerEvent).toMatchObject({
+			PlayerEventId: open.PlayerEventId,
+			Name: 'Profile Open',
+			AttendeeCount: 2,
+			Accessibility: 1,
+			ImageName: '',
+			BroadcastingRoomInstanceId: null,
+		})
+		expect(entry.PlayerEvent).not.toHaveProperty('State')
+
+		// The host: their public unfinished events, soonest first, under both keys.
+		const host = await profile(610)
+		const ids = [maybe.PlayerEventId, open.PlayerEventId]
+		expect(host.Created.map((e) => e.PlayerEventId)).toEqual(ids)
+		expect(Object.keys(host.Created[0])).toHaveLength(17)
+		expect(host.Responses.map((r) => r.PlayerEvent.PlayerEventId)).toEqual(ids)
+
+		// Nobody's events, and a non-numeric id doesn't match.
+		expect(await profile(999999)).toEqual({ Created: [], Responses: [] })
+		expect((await get('/api/playerevents/v1/all/abc')).status).toBe(404)
 	})
 
 	test('POST /api/playerevents/v1/respond records an RSVP and recounts attendees', async () => {
@@ -9289,7 +9800,6 @@ describe('openapi', () => {
 		)
 		expect([...documented].sort()).toEqual([
 			'DELETE /api/customAvatarItems/v1/{id}',
-			'DELETE /api/images/v1/deletesaved',
 			'DELETE /api/playerevents/v2/delete/{eventId}',
 			'GET /api/CircuitChipLists/{list}',
 			'GET /api/PlayerReporting/v1/moderationBlockDetails',
@@ -9346,6 +9856,7 @@ describe('openapi', () => {
 			'GET /api/playerReputation/v2/bulk',
 			'GET /api/playerevents/v1',
 			'GET /api/playerevents/v1/all',
+			'GET /api/playerevents/v1/all/{playerId}',
 			'GET /api/playerevents/v1/bulk',
 			'GET /api/playerevents/v1/club/{clubId}',
 			'GET /api/playerevents/v1/clubs',
@@ -9402,6 +9913,9 @@ describe('openapi', () => {
 			'POST /api/customAvatarItems/v1/{id}/report',
 			'POST /api/gamesight/event',
 			'POST /api/images/v1/cheer',
+			'POST /api/images/v1/deletesaved',
+			'POST /api/images/v1/modifydescription',
+			'POST /api/images/v2/modifyaccessibility',
 			'POST /api/images/v4/uploadsaved',
 			'POST /api/images/v5/cheered/bulk',
 			'POST /api/inventions/v1/cheer',

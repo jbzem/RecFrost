@@ -1222,5 +1222,893 @@
 		"FriendlyName": "Hoop Earrings",
 		"Tooltip": "",
 		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "04e348b7-107f-47b4-9331-ae3b9fa184ca,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Braided Bun Hair ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,cypMpMaVeUuRjm4FLH4czQ,PIjEKhXiCUqtA8FBhLBcmA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Cat-Eye Glasses (Teal)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,LTXy6g4xe0abuFzOLpVDUg,PIjEKhXiCUqtA8FBhLBcmA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Cat-Eye Glasses (Dark Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,tMsCUhDslkmdNBfogeSz7w,PIjEKhXiCUqtA8FBhLBcmA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Cat-Eye Glasses (Black)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "06306723-ca20-4aa6-b7b3-917113f41ac3,whWKAUSGp0qprsJomq9Nwg,PIjEKhXiCUqtA8FBhLBcmA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Cat-Eye Glasses (Pink)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf (Beige)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,_T4zEki_wk-UIPdhSaBr_Q",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf (Green)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,5z3jZhYvq0CGmdJ9IcUUsg",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf (Brown)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,EgEoJzG7A0aJ92qfInbX7g",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf (Orange)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,NETGR8iysUyxcZM_oGmrwQ",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf (White)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,OlfQDuz1NUOr88AL2n0jXg",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf (Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "071f179a-dde2-407f-92b2-f0c16fcb4e39,VudVdOAjZUibHmtFeNkvSw",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "0d1ae26e-aaa4-4914-ad70-c9ab8cfabc61,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Box Braids with Cuff Hair ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Basic Belt (Black)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,6fmUy748hU2dgwgaijSkUA,rL9p5JY83Eyxj00Dieg7oA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Basic Belt (Green)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,buuNFd8sK0eap78TL1gMNQ,-UFHTNvJs0CGDStb0PFkbQ,",
+		"PlatformMask": -1,
+		"FriendlyName": "Basic Belt (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,dBR1uNgk206eVoWntVzVAg,rL9p5JY83Eyxj00Dieg7oA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Basic Belt (Brown)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,LIgagNf4gk68EYQdlDruxg,rL9p5JY83Eyxj00Dieg7oA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Basic Belt (Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "12ec292f-0ccd-4c8a-a49c-3598f827659d,zPGCmxM_b0yTt7tqMaomcw,rL9p5JY83Eyxj00Dieg7oA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Basic Belt (Tan)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "14ef6b00-debf-4a85-9755-b4d37df496d3,724c79a3-822c-422f-9462-a5374ee0211c,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Baseball Cap (White))",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "1940c740-695d-4481-a802-bb11b6561635,",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Untucked Tee",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Halo (Turquoise)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,0p_eXn2gXUKrshSEmrQx6Q",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Halo (Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,3cPbhpDX-EqDQy6eN1E5Ug",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Halo (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,fAmEEm6ziUO2ZXTscQWtSg",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Halo (White)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,gEuE-X67b0-q5C0Tv11_nA",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Halo (Green)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "22a857bb-270a-4278-adbd-2df41181b36f,gk_mQ-jsakmxhZYYNlRl_w",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Halo (Orange)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "2822aa50-4344-434d-b46f-fd9443f865b9,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Curly Bob Hair ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "2e7cbdb0-cf22-4938-964f-acca57d221b7,",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (BTE Earmold - Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "2e7cbdb0-cf22-4938-964f-acca57d221b7,aEsXeTI_SEOclbm82n17tg",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (BTE Earmold - Gray)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "2e7cbdb0-cf22-4938-964f-acca57d221b7,pZDvYABTN06KdJ5Ck60XLA",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (BTE Earmold - Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "36b2ccf4-4f42-4dc4-aeaf-f3d10b2a6d30,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Etched Fade Hair ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "37f7b94a-92ba-4f5e-b94c-de00acfa4722,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Etched Flattop Hair ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "48fdfbc6-fca4-424c-aa57-3fcea41e23dc,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Leather Necklace (Black)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "48fdfbc6-fca4-424c-aa57-3fcea41e23dc,gsHBUqA1gE2XNTPA3VvBLQ,FwjsTo0nb0uNU6l8XvllNA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Leather Necklace (Brown)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "48fdfbc6-fca4-424c-aa57-3fcea41e23dc,JUQn0_PLIkytCrkAg0FflQ,FwjsTo0nb0uNU6l8XvllNA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Leather Necklace (Tan)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "4eaaad39-aa44-4791-8b67-2eafa8305850,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Afro Puffs Hair",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "6e48363d-cc62-40a8-87f9-a69fae90c002,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Box Braid Hair",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "849cabc9-db40-4448-b923-defe4e700072",
+		"PlatformMask": -1,
+		"FriendlyName": "Bride of Frank Hair",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "9bf75b23-84e9-436b-bbb8-4180ccd86b94,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wolf Cut Hair) ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "9c20fdd5-acf1-426c-b85a-2220ceee9472,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Short Curly Twists Hair ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,",
+		"PlatformMask": -1,
+		"FriendlyName": "Brimless Cap (White)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,hgLq0WyUAUSl2sboUrpTKQ",
+		"PlatformMask": -1,
+		"FriendlyName": "Brimless Cap (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,JzLPlVNG20G9mxG_4PF8Fg",
+		"PlatformMask": -1,
+		"FriendlyName": "Brimless Cap (Navy)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,M5uFQQpoQE-5CKMJnDv_LA",
+		"PlatformMask": -1,
+		"FriendlyName": "Brimless Cap (Green)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "9db35412-7a08-49dd-b80d-59c34a4616ea,VuMDnpnK50mzgUMwJ4F6Jw",
+		"PlatformMask": -1,
+		"FriendlyName": "Brimless Cap (Orange)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Wrap (White)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,0zldWzi4H0OQwsWPt6gl-w",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Wrap (Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,a0A1q_e1q06qquiu2KaZhA",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Wrap (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,M_BhFve7SkC7IJoymLiCLg",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Wrap (Orange)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "a0e6fe4d-991d-4bd1-a1dc-ac4c7375fa4d,rwESUxIrQEKA2hdQpcaPaA",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Wrap (Green)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "a52353bf-8693-45fb-a04a-19cf62a06482",
+		"PlatformMask": -1,
+		"FriendlyName": "Curlers Hair",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Black) ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,Aex0Zh1RQ0u9oTDFF1cFIg,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Yellow)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,El0s9F6cfkywcKOkqwbJtQ,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Grey)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,J9cK9BKtHUinG-DwAoPi3g,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Dreen)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,N0fBxjrCekO-HUqmc3MufQ,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,oNoEl-nDqk-HLsfz1538oA,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (White)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,pQ_3mZI7yEaxMw9n_Fr4Sg,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Pink)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,TpFWTdEW2kqtpvc0sPv-dw,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Purple)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,-VF3K4miGE28LxMgqVehRQ,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Orange)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b3b59410-d3df-464b-a75b-500a9e5ea154,vxZVeH2b_E6XlqyqCW0hBA,_o3mI1mjE02vekPVyJg8Aw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Pocket Tee (Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,3a1oW3_MY0e4lDN2V1X4ig,za8Mz14Ww0KtC6wavUPXdg,",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Nonbinary Pride)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,9jB8U3yxjE6hanEZgMdvtA",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - AAPI (AAPI Heritage Month)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,DIeasJUIj0KNetAzPzuIrg,o3Q2gADhh06dgaipkkdMsA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Bi Pride)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,EkA09Hj2m0u3c5STynn3Bw",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - ANAM (Autism & Neurodiversity Awareness Month)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,G6Udm6kMdE28vmRY5KPanA,Fw79pqDPP0C8H07AnTY-Vg,",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Lesbian Pride)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,MfF0wizDjUa7RUE-AVJpvA",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Intersex Pride)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,PIwziHk1BUuYkAf6kuK6wA",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - BHM (Black History Month)\t",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,PRLBrEEZhUumm3VnYVJP6Q",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Aromantic Pride)\t",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,sf962XJ0tkis0svkMkZCXQ,4bI7QRvdnEansPkwx8Di9A,",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Pan Pride)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,tm7Cnd3LzkqWHA1JMrgoeA,nbLr3c3lOkiWhNg9IYbt6Q,",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Ace Pride)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b6rLwzD4NkKV7xKn9ZYVkA,Xt3Ndm8mC0qsLClPIbgwUw",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room Hoodie - Pride (Genderfluid Pride)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b8e485d4-b5c2-480e-908c-d9b500375759,",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (Cochlear Implant - Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b8e485d4-b5c2-480e-908c-d9b500375759,7ZRNVpxhWk-j8R3oj0oVXg",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (Cochlear Implant - Gray)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "b8e485d4-b5c2-480e-908c-d9b500375759,8WJI7RAuaEy4KvQiQhoKBw",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (Cochlear Implant - Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Twist (Beige)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,irw2uj4c2Eil0ndPCTqodQ",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Twist (Yellow)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,pPZ3sDw3B06mKiYsAiAt9w",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Twist (White)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,sO8e2epLrUud243Xi9odXg",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Twist (Orange)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,s-QTVT5eTECKHL9FnHFCAQ",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Twist (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c414588b-29b3-4a1c-ae9e-7ad251901429,UnHAtXkd2kCdamzw6B3Mvg",
+		"PlatformMask": -1,
+		"FriendlyName": "Head Scarf Twist (Turquoise)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,5H0I1anlkkuUYIM28_ZOlA,l_iJLV14q0eNgOsOI1u0pw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Glasses (Purple)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,9tZq7Xvfj0WhhLBAuAacxA,l_iJLV14q0eNgOsOI1u0pw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Glasses (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "c70005d5-6276-4a98-acb3-6a77bc19379a,BqNgpjP7a0qmm3I3DNbKLA,l_iJLV14q0eNgOsOI1u0pw,",
+		"PlatformMask": -1,
+		"FriendlyName": "Glasses (Yellow)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,941c046e-4e95-49f8-a7d7-19071fcc3c94,0440f08f-ef1d-49d8-942b-523056e8bb45,703ff56b-560d-4ff4-8c63-d195e879a328",
+		"PlatformMask": -1,
+		"FriendlyName": "Alpaca Shirt",
+		"Tooltip": "",
+		"Rarity": -1
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "d0a9262f-5504-46a7-bb10-7507503db58e,95e4cc30-cb68-473d-a395-feadf5b51512,0440f08f-ef1d-49d8-942b-523056e8bb45,0c496f32-0011-4c4d-9778-59446f70c032",
+		"PlatformMask": -1,
+		"FriendlyName": "Rec Room T-Shirt (Crew Neck, Orange)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,3JrW3FFUvEe6HZ9VjOVjMw,ynPJe7asTk-x_GtcEBQbgA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Sweat Suit (Pink)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,jeEWPFvzaEGmXaUrxTFvwg,ynPJe7asTk-x_GtcEBQbgA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Sweat Suit (Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,NjCLn5A5h0-V8jB72etCNQ,ynPJe7asTk-x_GtcEBQbgA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Sweat Suit (Black)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,OT5APcpbpEiMNNah8n4Txw,ynPJe7asTk-x_GtcEBQbgA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Sweat Suit (Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "d766c8d3-76e8-4021-b0a4-24b78fb7eaba,t2fOeVWloUOKDlIaf4Sxnw,ynPJe7asTk-x_GtcEBQbgA,",
+		"PlatformMask": -1,
+		"FriendlyName": "Sweat Suit (Yellow)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ea254491-116c-41c4-a9ca-1fa1fca76374,",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (BTE - Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ea254491-116c-41c4-a9ca-1fa1fca76374,1n-ekJos-EeViiz_zG4jEg",
+		"PlatformMask": -1,
+		"FriendlyName": "Hearing Aids (BTE - Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ec474314-fd79-441d-852b-d8999274fe57,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wavy Middle Part Hair ",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,5rLtRfNWO0qT7X-0sJkUXg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Lime)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Ai85jH88H06ze74VdWolfw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Pure Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Dg3DxHr8GU2e190TGveXqw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Baby Pink)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,DiJGFIO-5Ue8rkEhvF5-Mg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Sienna)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,fWxn_AarpESryNA9UN8wvA,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Teal)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,M0nOQl44DkG_GjTXzAEQCQ,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Yellow)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,NRjJuinZ4ki8qaEPvP84tw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Mint)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,sEKIlMfbJ0eED6VtcXcQrw,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Army Green)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Sg5yKkqJEEulQeUvRhFgJg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Prussian Blue)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,x3kGXCD0UEWkjfXqu_kuxg,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Purple)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ecc1dbe6-ca06-4564-b2a6-30956194d1e9,Z2L6AqDdcUqxiN1mVw-X9g,0b2395e1-ebcc-47e9-aaf1-faf9e9cec4cd,",
+		"PlatformMask": -1,
+		"FriendlyName": "Wristbands (Light Purple)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "edc7888c-dc42-48ab-8815-884d227760af,,,",
+		"PlatformMask": -1,
+		"FriendlyName": "Short Locs Hair",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "feb8b50b-d3da-4e45-b4d0-69aeeb5cfeb3,",
+		"PlatformMask": -1,
+		"FriendlyName": "Headdress (White)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "feb8b50b-d3da-4e45-b4d0-69aeeb5cfeb3,1WBsT99QM0anps6ZoWE59Q",
+		"PlatformMask": -1,
+		"FriendlyName": "Headdress (Red)",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "ffdda4d3-a768-4335-a883-aa3f9dc897bf,",
+		"PlatformMask": -1,
+		"FriendlyName": "Trihawk Hair",
+		"Tooltip": "",
+		"Rarity": 0
+	},
+	{
+		"AvatarItemType": 0,
+		"AvatarItemDesc": "oYvOo47DJE-DEPlpn5xNUw,whs9olNz9Uani7Gou31mvw,y6aASPUwDkas0W5Yl27ydQ,",
+		"PlatformMask": -1,
+		"FriendlyName": "Belt Bag (Rainbow Pride)",
+		"Tooltip": "",
+		"Rarity": 0
 	}
 ]

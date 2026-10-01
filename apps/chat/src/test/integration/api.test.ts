@@ -956,6 +956,17 @@ describe('PUT /thread/chatPrivacySetting', () => {
 		})
 	})
 
+	// Re-posting the stored value writes nothing to KV — writes are the cost, and the client
+	// posts these freely. The raw value is seeded with whitespace JSON.stringify never
+	// produces; surviving the PUT untouched means no write happened.
+	it('does not write KV when the value is already stored', async () => {
+		const padded = '{ "Recroom.OOBE": "77", "directMessagePrivacySetting": "Favorites" }'
+		await env.RECFLARE_PLAYER_SETTINGS.put('player:887010', padded)
+		const res = await put(887010, { directMessagePrivacySetting: 'Favorites' })
+		expect(await res.json()).toMatchObject({ directMessagePrivacySetting: 1 })
+		expect(await env.RECFLARE_PLAYER_SETTINGS.get('player:887010', 'text')).toBe(padded)
+	})
+
 	it('accepts the enum by ordinal too, and is case-insensitive about the name', async () => {
 		expect(await (await put(887005, { directMessagePrivacySetting: '2' })).json()).toMatchObject({
 			directMessagePrivacySetting: 2,

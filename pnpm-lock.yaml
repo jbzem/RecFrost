@@ -347,6 +347,9 @@ importers:
       '@2toad/profanity':
         specifier: 3.3.0
         version: 3.3.0
+      '@repo/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers
@@ -1041,6 +1044,9 @@ importers:
 
   apps/playersettings:
     dependencies:
+      '@repo/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@repo/hono-helpers':
         specifier: workspace:*
         version: link:../../packages/hono-helpers

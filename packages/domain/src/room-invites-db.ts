@@ -128,6 +128,28 @@ export async function getLatestRoomInviteBetween(
 }
 
 /**
+ * Whether ANY live invite stands to `toPlayerId` for the room with this id, from anyone.
+ *
+ * This is the key that opens an unpublished room to a room MATCHMAKE
+ * (`POST /matchmake[/v2]/room/:roomId` on `match`): a room that isn't public admits its
+ * creator, its role holders, and whoever has been invited into it — and "invited" is a row
+ * here whose `room_id` is that room. Any row is enough and none is consumed: the caller may
+ * be retrying a join that failed downstream, and the row expires with the sweep anyway.
+ * A miss is, as everywhere in this module, "never invited" and "already swept" alike.
+ */
+export async function hasRoomInviteTo(
+	db: D1Database,
+	toPlayerId: number,
+	roomId: number
+): Promise<boolean> {
+	const row = await db
+		.prepare(`SELECT 1 AS hit FROM room_invite WHERE to_player_id = ?1 AND room_id = ?2 LIMIT 1`)
+		.bind(toPlayerId, roomId)
+		.first<{ hit: number }>()
+	return row !== null
+}
+
+/**
  * Record an invite from `fromPlayerId` to `toPlayerId` for a room, returning it as the
  * client reads it back. `roomId` is null when the caller's room instance didn't resolve.
  *

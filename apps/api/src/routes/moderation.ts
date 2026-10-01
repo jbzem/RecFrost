@@ -368,12 +368,11 @@ export const moderationRoutes = new Hono<App>({ strict: false })
 				'matchmake refuses on (login still issues a token, so the client can reach this ' +
 				'screen) — so a caller with one in force gets ' +
 				'`IsBan: true`, the `ReportCategory` the report was filed under, the fixed ' +
-				'`Message` “Rule violation”, and the block’s span as the pair the client reads ' +
-				'them as: `TimeoutStartedAt` is when the ban was handed down (`banned_at`, ' +
-				'falling back to the report’s `created_at` for a ban set before that column ' +
-				'existed) and `Duration` the ' +
-				'seconds from there to `ban_expires` (2147483647, the int32 max, for a permanent ' +
-				'ban). ' +
+				'`Message` “Rule violation”, and `Duration` as the seconds LEFT on the ban as of ' +
+				'this request — the client counts it down from when it receives it, so it is ' +
+				'`ban_expires` minus now, rounded up, never the ban’s full span (2147483647, the ' +
+				'int32 max, for a permanent ban). `TimeoutStartedAt` stays null: the client does ' +
+				'not pair it with `Duration` for a ban, and no reference server sends it. ' +
 				'`PlayerIdReporter` stays null: it names a kicking host, and the reporter is not ' +
 				'shown to the player they reported. Only the caller’s own account is consulted, ' +
 				'not the ban-evasion arms.\n\n' +
@@ -396,8 +395,11 @@ export const moderationRoutes = new Hono<App>({ strict: false })
 		async (c) => {
 			const id = await authedId(c)
 			if (id === null) return unauthorized(c)
-			const ban = await getActiveBan(c.env.DB, id)
-			return c.json(ban ? banBlockDetails(ban) : NOT_BLOCKED)
+			// One instant for both: the ban resolved as in force at `now` is described as of
+			// `now`, so it can't come out with 0 left.
+			const now = new Date()
+			const ban = await getActiveBan(c.env.DB, id, now)
+			return c.json(ban ? banBlockDetails(ban, now) : NOT_BLOCKED)
 		}
 	)
 	// The reasons the client offers when a player starts a vote-to-kick. Order matters —

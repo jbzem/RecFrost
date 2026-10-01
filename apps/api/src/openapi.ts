@@ -361,7 +361,11 @@ export const CheerPlayerResponse = z.object({
 export const CreateCustomAvatarItemMetadata = z.object({
 	Name: z.string(),
 	Description: z.string().optional(),
-	Price: z.number().int().optional(),
+	Price: z
+		.number()
+		.int()
+		.optional()
+		.describe('Tokens, 0–1000 (MAX_PLAYER_ITEM_PRICE); 0 when left out'),
 	BaseAvatarItemId: z.number().int(),
 	BaseAvatarItemColor: z.string().describe('Hex colour, e.g. `#F55C1A`'),
 	Accessibility: z.number().int().optional(),
@@ -434,7 +438,7 @@ export const CustomAvatarItemDto = z.object({
 export const UpdateCustomAvatarItemRequest = z.object({
 	Name: z.string().nullable().optional(),
 	Description: z.string().nullable().optional(),
-	Price: z.number().int().nullable().optional(),
+	Price: z.number().int().nullable().optional().describe('Tokens, 0–1000 (MAX_PLAYER_ITEM_PRICE)'),
 	Accessibility: z.number().int().nullable().optional(),
 })
 
@@ -761,7 +765,10 @@ export const PublishInventionRequest = z.object({
 		.int()
 		.nullable()
 		.optional()
-		.describe('Price in tokens; null leaves it as it is, and a negative one is ignored'),
+		.describe(
+			'Price in tokens, at most 1000 (MAX_INVENTION_PRICE); null leaves it as it is, a ' +
+				'negative one is ignored, and one over the cap refuses the publish'
+		),
 })
 
 /** `POST /api/inventions/v2/delete` JSON body — the id and nothing else. */
@@ -785,7 +792,7 @@ export const InventionDeleteResult = z.object({
 /** `POST /api/inventions/v1/updateprice` JSON body. */
 export const UpdatePriceRequest = z.object({
 	InventionId: z.int(),
-	Price: z.int().describe('Must be >= 0'),
+	Price: z.int().describe('Tokens, 0–1000 (MAX_INVENTION_PRICE)'),
 })
 
 /** `POST /api/inventions/v6/save` JSON body — camelCase, unlike the read shapes. */
@@ -1340,6 +1347,17 @@ export const PlayerEventsAll = z.object({
 	),
 })
 
+/**
+ * `GET /api/playerevents/v1/all/{playerId}` — a player's public events. Both keys carry
+ * the 17-key base event; a `Responses` entry pairs it with the player's RSVP.
+ */
+export const PlayerPublicEvents = z.object({
+	Created: z.array(PlayerEventBaseDto).describe('Public events the player created'),
+	Responses: z
+		.array(z.object({ PlayerEvent: PlayerEventBaseDto, PlayerEventResponse: PlayerEventResponseDto }))
+		.describe('Public events the player is attending, each beside their Going RSVP'),
+})
+
 /** `GET /api/playerevents/v1/club/:clubId` — the paged single-club event feed. */
 export const PlayerEventsPage = z.object({
 	ContinuationToken: z.string().describe('Empty = no next page'),
@@ -1363,8 +1381,9 @@ export const VoteToKickReason = z.object({
  * `GET|POST /api/PlayerReporting/v1/moderationBlockDetails` — the caller's block. With an
  * account-wide ban in force (a `report` row with `banned` set) it describes that ban:
  * `IsBan` true, the report's `ReportCategory`, a fixed `Message` of "Rule violation", and
- * its span as `TimeoutStartedAt` (the report's `created_at`) plus `Duration` (seconds to
- * `ban_expires`; int32 max for a permanent ban). Otherwise it is the "not blocked" answer, mirroring the reference server's stub `ReturnModerationBlockDetails()`:
+ * `Duration` as the seconds LEFT as of the request (`ban_expires` minus now; int32 max for
+ * a permanent ban) — the client counts it down from receipt, so it is never the full span.
+ * `TimeoutStartedAt` stays null for a ban. Otherwise it is the "not blocked" answer, mirroring the reference server's stub `ReturnModerationBlockDetails()`:
  * `ReportCategory` is `Unknown` (-1) rather than 0, which is a real category, and
  * `Message` is null — the client distinguishes "no message" from a blank one, so we send
  * null where the reference sends an empty string. `IsVoiceModAutoban`/`TimeoutStartedAt`
@@ -1384,7 +1403,7 @@ export const ModerationBlockDetails = z.object({
 	Duration: z
 		.int()
 		.describe(
-			'Length of the block in seconds from `TimeoutStartedAt`; 2147483647 (int32 max) for a permanent ban; 0 when not blocked'
+			'Seconds LEFT on the block as of this request (the client counts it down from receipt); 2147483647 (int32 max) for a permanent ban; 0 when not blocked'
 		),
 	GameSessionId: z.int(),
 	IsHostKick: z.boolean().describe('Always false — no host kick is ever recorded here'),
@@ -1404,7 +1423,7 @@ export const ModerationBlockDetails = z.object({
 		.string()
 		.nullable()
 		.describe(
-			'When the block began — the ban’s report `created_at` (ISO-8601 UTC); `Duration` runs from it. Null when not blocked'
+			'Always null — the client does not pair it with `Duration` for a ban (it names the start of a voice-chat timeout, which this server never hands out)'
 		),
 	AssociatedAccountUsername: z.string().nullable().describe('Always null'),
 	ShowCreatorCodeOfConduct: z.boolean().describe('Always false'),
@@ -1650,8 +1669,20 @@ export const UploadImageResponse = z.object({
 	ImageName: z.string().describe('The bucket key; the img worker serves the object by it'),
 })
 
-/** `DELETE /api/images/v1/deletesaved` JSON body. */
+/** `POST /api/images/v1/deletesaved` JSON body. */
 export const DeleteImageRequest = z.object({ ImageName: z.string() })
+
+/** `POST /api/images/v2/modifyaccessibility` JSON body. */
+export const ModifyImageAccessibilityRequest = z.object({
+	ImageName: z.string(),
+	Accessibility: z.int().describe('0 private, 1 public'),
+})
+
+/** `POST /api/images/v1/modifydescription` JSON body. */
+export const ModifyImageDescriptionRequest = z.object({
+	ImageName: z.string(),
+	Description: z.string().nullable().describe('The new caption; null or empty clears it'),
+})
 
 /**
  * `POST /api/images/v5/cheered/bulk` form body — the saved-image ids to report cheer state

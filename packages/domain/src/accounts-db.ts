@@ -76,14 +76,18 @@ export interface Account {
 	 *
 	 * Kept for ban EVASION: an account logging in from the same install as a banned one is
 	 * the sharpest of the linked arms after a proven platform identity, and much narrower
-	 * than the IP arm (a household shares an address, not an install). Nothing consumes it
-	 * yet — see `getAccountsByDeviceId`, and the arms in the api worker's bans-db, which
-	 * this is not one of yet.
+	 * than the IP arm (a household shares an address, not an install). The per-device
+	 * signup cap counts it (`countAccountsByDeviceId`); the ban-evasion arms in the api
+	 * worker's bans-db do not yet.
 	 *
 	 * ONE value, overwritten each login: this is the account's LAST-SEEN device, not a
 	 * history of every device it has used. So evasion matching on it will catch a player
 	 * who evades from the install they were last banned on, and miss one who has since
-	 * logged the banned account in somewhere else.
+	 * logged the banned account in somewhere else — and the signup cap can be walked back
+	 * the same way, by logging old accounts in from another install. That costs the
+	 * abuser a login per freed slot, which is the point; and since the id is client-chosen,
+	 * a scripted signup can fabricate one anyway, so an immutable signup-time copy (as the
+	 * IP arm keeps in `signupIp`) would buy nothing here.
 	 */
 	deviceId?: string
 	/** DeviceClass int (2 = PC/standalone) that `deviceId` was last seen on. */
@@ -299,6 +303,29 @@ export async function getAccountsByDeviceId(db: D1Database, deviceId: string): P
 		.bind(deviceId)
 		.all<AccountRow>()
 	return parseAll(results)
+}
+
+/**
+ * How many accounts were last seen on a given client device — the count the per-device
+ * signup cap ("no more than N accounts per install") is enforced against. Counts the
+ * last-seen `deviceId`, the only device the account records (see the field's notes for
+ * why that is enough here).
+ *
+ * An empty id counts 0, as `countAccountsBySignupIp` does for an empty ip: a signup that
+ * posts no `device_id` (the website's, for one) can't be attributed to an install, and
+ * lumping every such account together would lock out real players.
+ *
+ * Narrower than an IP — a household shares an address, not an install — but still an
+ * unverified client value, so a cap here catches the stock client making accounts, not
+ * a script that fabricates ids.
+ */
+export async function countAccountsByDeviceId(db: D1Database, deviceId: string): Promise<number> {
+	if (deviceId === '') return 0
+	const row = await db
+		.prepare("SELECT COUNT(*) AS n FROM account WHERE json_extract(data, '$.deviceId') = ?1")
+		.bind(deviceId)
+		.first<{ n: number }>()
+	return row?.n ?? 0
 }
 
 /** Record the account's most recent successful login time (ISO-8601). */

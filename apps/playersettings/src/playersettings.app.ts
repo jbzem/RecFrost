@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { mergePlayerSettings } from '@repo/domain'
 import { withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
@@ -181,7 +182,9 @@ const app = new Hono<App>()
 
 	// Upsert player settings into KV, keyed by the authenticated player id.
 	// A full replace would overwrite the player's entire set; we merge so individual key PUTs
-	// (e.g. `key=PlayerSessionCount&value=1`) don't wipe the rest.
+	// (e.g. `key=PlayerSessionCount&value=1`) don't wipe the rest. The client re-posts values
+	// it already has at every login and menu change, so a PUT that changes nothing is a
+	// read only — KV writes are what cost money here.
 	.put(
 		'/playersettings',
 		describeRoute({
@@ -192,7 +195,8 @@ const app = new Hono<App>()
 				'key PUT (`key=PlayerSessionCount&value=1`, which is what the client sends) leaves the',
 				'player’s other settings alone. A JSON body is also accepted, as one object or an',
 				'array, in either `key`/`value` or `Key`/`Value` casing; entries with an empty key are',
-				'dropped. An unparseable or empty body is a no-op 200, not a 400. Empty body on success.',
+				'dropped. An unparseable or empty body is a no-op 200, not a 400, and so is a PUT whose',
+				'values are already stored — nothing is written to KV. Empty body on success.',
 			].join(' '),
 			security: AUTHED,
 			requestBody: formOrJson(SettingFormWrite, SettingJsonWrite, 'The setting(s) to write'),
@@ -208,15 +212,10 @@ const app = new Hono<App>()
 			const incoming = await parseSettings(c)
 			if (incoming.length === 0) return c.body(null, 200)
 
-			const kvKey = `player:${id}`
-			const existing = await c.env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(
-				kvKey,
-				'json'
-			)
-			const merged: Record<string, string> = { ...existing }
-			for (const { key, value } of incoming) merged[key] = value
+			const patch: Record<string, string> = {}
+			for (const { key, value } of incoming) patch[key] = value
 
-			await c.env.RECFLARE_PLAYER_SETTINGS.put(kvKey, JSON.stringify(merged))
+			await mergePlayerSettings(c.env.RECFLARE_PLAYER_SETTINGS, id, patch)
 			return c.body(null, 200)
 		}
 	)

@@ -18,6 +18,7 @@
  */
 
 import {
+	Accessibility,
 	glyphLength,
 	MAX_EVENT_DESCRIPTION_LENGTH,
 	MAX_EVENT_DURATION_MS,
@@ -954,6 +955,72 @@ export async function getEventsByCreator(
 }
 
 /**
+ * One entry of a profile's `Responses` — the event beside the player's RSVP to it. The
+ * event is the 17-key BASE shape (the client's v1 PlayerEvent), not the stored record.
+ */
+export interface PlayerEventWithResponse {
+	PlayerEvent: PlayerEventBase
+	PlayerEventResponse: PlayerEventResponse
+}
+
+/** What anyone may see of a player's events — `GET /api/playerevents/v1/all/{playerId}`. */
+export interface PlayerPublicEvents {
+	Created: PlayerEventBase[]
+	Responses: PlayerEventWithResponse[]
+}
+
+/**
+ * A player's PUBLIC events, as their profile shows them to anyone: the ones they created,
+ * and the ones they are attending — answered Going; a maybe, a decline and an unanswered
+ * invitation are nobody else's business — each soonest first. An event's creator holds a
+ * Going row for it, so their own events appear under both keys.
+ *
+ * Only `Accessibility` Public events are served, and FINISHED ones are left out, as the
+ * browse feed and the room shelf do: this is what the player is going to, not a history.
+ */
+export async function getPublicEventsByPlayer(
+	db: D1Database,
+	playerId: number,
+	now = Date.now()
+): Promise<PlayerPublicEvents> {
+	const at = eventTime(now)
+	const [created, responses] = await db.batch<EventRow & Partial<EventAttendeeRow>>([
+		db
+			.prepare(
+				`SELECT data FROM event
+				 WHERE creator_player_id = ?1 AND end_time >= ?2
+				   AND json_extract(data, '$.Accessibility') = ?3`
+			)
+			.bind(playerId, at, Accessibility.Public),
+		db
+			.prepare(
+				`SELECT e.data AS data, a.rowid AS id, a.event_id, a.player_id, a.status, a.responded_at
+				 FROM event_attendee a
+				 JOIN event e ON e.id = a.event_id
+				 WHERE a.player_id = ?1 AND a.status = ?2 AND e.end_time >= ?3
+				   AND json_extract(e.data, '$.Accessibility') = ?4`
+			)
+			.bind(playerId, EVENT_RESPONSE.going, at, Accessibility.Public),
+	])
+	return {
+		Created: created.results
+			.map((r) => JSON.parse(r.data) as PlayerEvent)
+			.sort(bySoonest)
+			.map(toEventBase),
+		Responses: responses.results
+			.map((r) => ({
+				event: JSON.parse(r.data) as PlayerEvent,
+				response: toEventResponse(r as EventAttendeeRow),
+			}))
+			.sort((a, b) => bySoonest(a.event, b.event))
+			.map(({ event, response }) => ({
+				PlayerEvent: toEventBase(event),
+				PlayerEventResponse: response,
+			})),
+	}
+}
+
+/**
  * The events belonging to a set of clubs — the events shelf on a club's page, soonest
  * first. Selected on the indexed club_id column. An empty id list is an empty shelf
  * rather than every event.
@@ -1013,8 +1080,34 @@ function bySoonest(a: PlayerEvent, b: PlayerEvent): number {
 }
 
 /**
+ * Best attended first — the count of players who answered Going (`AttendeeCount`, the
+ * number the client shows), which is exactly what the sort is meant to rank. Interested
+ * and Can't-go don't count, as they don't toward the displayed count either. Ties fall
+ * back to soonest first so the order stays stable across pages.
+ */
+function byAttendance(a: PlayerEvent, b: PlayerEvent): number {
+	return b.AttendeeCount - a.AttendeeCount || bySoonest(a, b)
+}
+
+/**
+ * The orders the search serves, by the `sort` the client sends: `StartTime` (soonest
+ * first, the default) and `Attendance` (most Going replies first).
+ */
+export type EventSort = 'StartTime' | 'Attendance'
+
+/**
+ * Reads the `sort` query into an {@link EventSort}, case-insensitively. Anything
+ * unrecognised — or nothing at all — is the default order, soonest first, rather than
+ * a 400: the browse screen has always sent this param and been served regardless.
+ */
+export function parseEventSort(raw: string | undefined): EventSort {
+	return raw?.toLowerCase() === 'attendance' ? 'Attendance' : 'StartTime'
+}
+
+/**
  * Event search — the browse query on the player-events screen. Term by term, an empty
- * query browsing everything upcoming; paginated via skip/take, soonest first.
+ * query browsing everything upcoming; paginated via skip/take, in the order `sort`
+ * names ({@link EventSort}): soonest first by default, or most Going replies first.
  *
  * A term is matched one of two ways, and the `#` decides which:
  *
@@ -1035,7 +1128,8 @@ export async function searchEvents(
 	db: D1Database,
 	query: string,
 	skip: number,
-	take: number
+	take: number,
+	sort: EventSort = 'StartTime'
 ): Promise<PlayerEvent[]> {
 	const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
 	// A `#` prefix makes a term a tag; the rest are matched against the text. A bare `#`
@@ -1067,5 +1161,5 @@ export async function searchEvents(
 		)
 	}
 
-	return events.sort(bySoonest).slice(skip, skip + take)
+	return events.sort(sort === 'Attendance' ? byAttendance : bySoonest).slice(skip, skip + take)
 }

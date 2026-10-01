@@ -10,3 +10,11 @@ declare namespace Cloudflare {
 		mainModule: MainModule
 	}
 }
+
+// Vite serves a `?raw` import as the file's text. Used by the tests to read a data
+// migration (0032, the custom-item price cap) as a STRING and run its UPDATE against the
+// schema they build from SCHEMA_DDL, which the migration files never touch.
+declare module '*.sql?raw' {
+	const content: string
+	export default content
+}

@@ -1,4 +1,4 @@
-import { logger } from '@repo/hono-helpers'
+import { flagVar, logger } from '@repo/hono-helpers'
 
 import type { Env } from './context'
 
@@ -44,6 +44,14 @@ const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverif
  * pair belongs to no account and passes without a human. Deliberately not a built-in
  * fallback: the same code path then runs everywhere.
  */
+/**
+ * Whether the operator has switched web (password) signup on — `PASSWORD_SIGNUP`, the
+ * knob `auth` enforces on its `create_account` grant, read here for the form and the
+ * endpoint's early refusal. Unset is OFF: a web account has no identity but its address,
+ * so a server opens this deliberately. See `Env.PASSWORD_SIGNUP`.
+ */
+export const passwordSignupOpen = (env: Env): boolean => flagVar(env.PASSWORD_SIGNUP, false)
+
 export async function turnstileKeys(
 	env: Env
 ): Promise<{ siteKey: string; secretKey: string } | null> {

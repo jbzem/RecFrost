@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
+import { mergePlayerSettings as mergeStoredPlayerSettings, readPlayerSettings } from '@repo/domain'
 import { logger, withCleanSpec, withNotFound, withOnError } from '@repo/hono-helpers'
 import { validateAndGetAccountId } from '@repo/jwt'
 
@@ -201,10 +202,7 @@ async function getPlayerSettings(
 	env: Env,
 	accountId: number
 ): Promise<Record<string, string> | null> {
-	return env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(
-		`player:${accountId}`,
-		'json'
-	).catch(() => null)
+	return readPlayerSettings(env.RECFLARE_PLAYER_SETTINGS, accountId).catch(() => null)
 }
 
 /**
@@ -251,15 +249,15 @@ async function writeChatPrivacy(
  * Merge keys into the player's settings map, the way the `playersettings` worker's own PUT
  * does. Never a whole-map write: the bag holds every setting the player has (OOBE state,
  * tutorial mask, …) and storing one key on its own would wipe the rest. Values are strings,
- * which is what that worker stores and what its GET serves back.
+ * which is what that worker stores and what its GET serves back. Nothing is written when
+ * the patch changes no value — the client re-posts its privacy settings freely.
  */
 async function mergePlayerSettings(
 	env: Env,
 	accountId: number,
 	patch: Record<string, string>
 ): Promise<void> {
-	const merged: Record<string, string> = { ...(await getPlayerSettings(env, accountId)), ...patch }
-	await env.RECFLARE_PLAYER_SETTINGS.put(`player:${accountId}`, JSON.stringify(merged))
+	await mergeStoredPlayerSettings(env.RECFLARE_PLAYER_SETTINGS, accountId, patch)
 }
 
 /**

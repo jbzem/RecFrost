@@ -6,7 +6,6 @@ import {
 	Accessibility,
 	answerRoomRoleInvite,
 	applyRoomTagEdit,
-	areFriends,
 	autocompleteRoomSearch,
 	banPlayerFromRoom,
 	canManageRoom,
@@ -29,9 +28,11 @@ import {
 	getHotRooms,
 	getInteraction,
 	getOrCreateDormRoom,
+	getPlayerData,
 	getPlayerIdsInRoom,
 	getPresence,
 	getPublicRoomsByCreator,
+	getPublicVisitedRooms,
 	getRecommendedRooms,
 	getRoomBanHistory,
 	getRoomBans,
@@ -61,6 +62,7 @@ import {
 	roomRoles,
 	saveSubRoomData,
 	searchRooms,
+	setPlayerData,
 	setRoomDescription,
 	setRoomImage,
 	setRoomLeaderboard,
@@ -121,11 +123,11 @@ import {
 	ModifySubRoomRequest,
 	MoveSubRoomRequest,
 	NameRequest,
-	NOT_FRIENDS_RESPONSE,
 	PagedRooms,
 	pageParams,
 	PhotonAccessTokenDto,
 	PlayerDataDto,
+	PlayerDataRequest,
 	playerIdParam,
 	PublishSaveRequest,
 	PublishStateConfigsEnvelope,
@@ -1568,42 +1570,52 @@ const app = new Hono<App>()
 		}
 	)
 
-	// Another player's visited rooms — what the client shows on a friend's profile.
-	// Auth-gated (401), and FRIENDS-ONLY: a valid token for someone who isn't that
-	// player and isn't a mutual friend of theirs is a 403, since where a player has
-	// been is not public. Registered after `visitedby/me` so the literal path wins.
-	// Paginated via skip/take (take defaults to 100) and, like `visitedby/me`, a bare
-	// array — the client's room-source loaders expect a plain list, not a page.
+	// Another player's visited rooms — what the client shows on their profile. Auth-gated
+	// (401) but otherwise open: anyone can look at anyone's history, as they can at the
+	// `ownedby/{accountId}` list beside it. Registered after `visitedby/me` so the
+	// literal path wins. Paginated via skip/take (take defaults to 100) and, like
+	// `visitedby/me`, a bare array — the client's room-source loaders expect a plain
+	// list, not a page.
+	//
+	// What is hidden is the ROOM, not the history: everyone else sees only the LISTABLE
+	// rooms of it (public, not a dorm, not opted out of lists — the same cut as
+	// `ownedby/{accountId}`). A visit is stamped wherever the player goes, so the raw
+	// history names their unpublished builds and the private rooms they were invited
+	// into, and served whole it leaked rooms nobody has released. Reading your OWN
+	// history by id is the full list, exactly as `visitedby/me` serves it.
 	.get(
 		'/rooms/visitedby/:playerId{[0-9]+}',
 		describeRoute({
 			tags: ['Rooms'],
-			summary: 'A friend’s visited rooms',
+			summary: 'Another player’s visited rooms',
 			description: [
-				'The rooms another player has visited, as a bare array. Friends only: the caller must',
-				'be that player or a mutual friend of theirs (403 otherwise) — visit history is not',
-				'public.',
+				'The rooms another player has visited, as a bare array. Any authed caller may read',
+				'anyone’s history, but only its listable rooms (public, not a dorm, not opted out of',
+				'lists): the player’s unpublished builds and the private rooms they were invited',
+				'into stay off the list. Asking for your own id serves the full history, as',
+				'`visitedby/me` does.',
 			].join(' '),
 			security: AUTHED,
 			parameters: [playerIdParam, ...pageParams(100)],
 			responses: {
 				200: json(RoomDto.array(), 'That player’s visited rooms'),
 				401: UNAUTHORIZED_RESPONSE,
-				403: NOT_FRIENDS_RESPONSE,
 			},
 		}),
 		async (c) => {
 			const accountId = await authedAccountId(c)
 			if (accountId === null) return unauthorized(c)
 			const playerId = Number.parseInt(c.req.param('playerId'), 10)
-			// Your own history is always readable (the client sometimes sends the id
-			// rather than `me`); anyone else's needs a mutual friendship.
-			if (playerId !== accountId && !(await areFriends(c.env.DB, accountId, playerId))) {
-				return c.body(null, 403)
-			}
+			// Your own history is the full one (the client sometimes sends the id rather
+			// than `me`); anyone else's is cut to its listable rooms.
+			const own = playerId === accountId
 			const skip = Number.parseInt(c.req.query('skip') ?? '0', 10) || 0
 			const take = Number.parseInt(c.req.query('take') ?? '100', 10) || 100
-			return c.json(await getVisitedRooms(c.env.DB, playerId, skip, take))
+			return c.json(
+				own
+					? await getVisitedRooms(c.env.DB, playerId, skip, take)
+					: await getPublicVisitedRooms(c.env.DB, playerId, skip, take)
+			)
 		}
 	)
 
@@ -1751,8 +1763,9 @@ const app = new Hono<App>()
 				'Copies a room’s content (scene, subrooms, settings) into a new room owned by the',
 				'caller. Cloning is the only way to make a room, so the per-account room cap is',
 				'enforced here — it counts the rooms the account created, minus their auto-provisioned',
-				'dorm (`MAX_ROOMS_PER_ACCOUNT`; 0 lifts the cap). The clone starts with no tags,',
-				'zeroed `Stats`, `IsRRO`/`IsDeveloperOwned`/`CloningAllowed` cleared, and PRIVATE accessibility — a new room is unpublished until its',
+				'dorm (`MAX_ROOMS_PER_ACCOUNT`; 0 lifts the cap). The clone keeps only the source’s',
+				'system tags (`Type` 1: `beta`, `limitsv2` — what the scene needs to run) and drops',
+				'every other tag, and starts with zeroed `Stats`, `IsRRO`/`IsDeveloperOwned`/`CloningAllowed` cleared, and PRIVATE accessibility — a new room is unpublished until its',
 				'owner sets its accessibility, so it never lands in the public feeds on creation.',
 				'',
 				'Rejections — a blank or taken name, the cap, a source that disallows cloning — are',
@@ -4165,21 +4178,75 @@ const app = new Hono<App>()
 		}
 	)
 
-	// The caller's per-room player data. Stub → empty blob (client reads `Data`).
+	// The caller's per-room player data — the blob they last saved through the PUT below,
+	// or an empty one, which the client reads as "no saved data". Auth-gated (401): the
+	// answer is the caller's own.
 	.get(
 		'/rooms/:roomId{[0-9]+}/playerdata/me',
 		describeRoute({
 			tags: ['Rooms'],
 			summary: 'The caller’s per-room player data',
 			description: [
-				'Per-room save data for the calling player. Nothing stores any yet, so this is a stub',
-				'serving an empty blob — which the client reads as “no saved data”. No auth: there’s',
-				'no caller-specific state to protect until something writes here.',
+				'The blob the calling player last saved for this room through',
+				'`PUT /rooms/{roomId}/playerdata/me`, verbatim, as `Data`. A player who has never',
+				'saved any — or an unknown room — gets an EMPTY `Data`, which the client reads as',
+				'“no saved data”; a 404 here would stall the room load.',
 			].join(' '),
+			security: AUTHED,
 			parameters: [roomIdParam],
-			responses: { 200: json(PlayerDataDto, 'An empty data blob') },
+			responses: {
+				200: json(PlayerDataDto, 'The caller’s saved blob, or an empty one'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
 		}),
-		(c) => c.json({ Data: '' })
+		async (c) => {
+			const accountId = await authedAccountId(c)
+			if (accountId === null) return unauthorized(c)
+			const roomId = Number.parseInt(c.req.param('roomId'), 10)
+			return c.json({ Data: (await getPlayerData(c.env.DB, roomId, accountId)) ?? '' })
+		}
+	)
+
+	// Save the caller's per-room player data (form field `data`, a base64 blob the client
+	// builds and the server never decodes). Auth-gated (401). One row per (room, player) —
+	// a re-save overwrites, so the table holds only the latest. Answers the same bare
+	// `{ Data }` the GET serves, carrying what was stored.
+	.put(
+		'/rooms/:roomId{[0-9]+}/playerdata/me',
+		describeRoute({
+			tags: ['Rooms'],
+			summary: 'Save the caller’s per-room player data',
+			description: [
+				'Stores the `data` form field — a base64 blob the client builds; the server neither',
+				'decodes nor validates it — as the calling player’s data for this room, in the',
+				'`playerdata` table. One row per (room, player): a re-save overwrites the blob in',
+				'place, so only the latest is kept. Any caller may save to any room; nothing here is',
+				'owner-gated, since the data is the caller’s own. An unknown room is a 404.',
+				'',
+				'Answers the same bare `{ Data }` the GET serves, carrying what was stored. That',
+				'shape is an ASSUMPTION — what the client does with this response has not been',
+				'observed; it has only been seen to read the GET.',
+			].join('\n'),
+			security: AUTHED,
+			parameters: [roomIdParam],
+			requestBody: form(PlayerDataRequest, 'The blob to store'),
+			responses: {
+				200: json(PlayerDataDto, 'The stored blob'),
+				401: UNAUTHORIZED_RESPONSE,
+				404: { description: 'No such room (empty body)' },
+			},
+		}),
+		async (c) => {
+			const accountId = await authedAccountId(c)
+			if (accountId === null) return unauthorized(c)
+
+			const roomId = Number.parseInt(c.req.param('roomId'), 10)
+			if (!(await getRoomById(c.env.DB, roomId))) return c.body(null, 404)
+
+			const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+			const data = typeof body.data === 'string' ? body.data : ''
+			return c.json({ Data: await setPlayerData(c.env.DB, roomId, accountId, data) })
+		}
 	)
 
 	// A room's XP settings — whether players earn experience there and how much of it counts
@@ -4218,8 +4285,8 @@ const app = new Hono<App>()
 			description: [
 				'Per-room experience/progression for the calling player. Nothing tracks any yet, so',
 				'this is an empty list — which the client reads as “no progress in this room”, where',
-				'a 404 would stall the room load. No auth, matching `playerdata/me`: the answer is',
-				'the same for every caller until something writes here.',
+				'a 404 would stall the room load. No auth: the answer is the same for every caller',
+				'until something writes here.',
 			].join(' '),
 			parameters: [roomIdParam],
 			responses: { 200: json(RoomExperiencePlayer, 'An empty list') },

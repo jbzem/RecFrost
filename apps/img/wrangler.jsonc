@@ -21,17 +21,14 @@
 	// alongside it: uploads posted to `storage` as FileType 3 land under its
 	// `image/` prefix with no extension, and the client asks THIS worker for them
 	// by the bare name — see the extensionless-key branch in src/img.app.ts.
-	// RecFrost fork: R2 is disabled — these bind KV namespaces under the same
-	// names and the entry wraps them with withR2OverKv (see r2-kv.ts). "local"
-	// ids are replaced from RECFLARE_KV at deploy time.
-	"kv_namespaces": [
+	"r2_buckets": [
 		{
 			"binding": "IMAGES",
-			"id": "local"
+			"bucket_name": "recflare-img"
 		},
 		{
 			"binding": "CDN_ASSETS",
-			"id": "local"
+			"bucket_name": "recflare-cdn"
 		}
 	],
 	// Shared `recflare` D1 — the `img` worker owns the `images` metadata table

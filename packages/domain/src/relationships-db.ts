@@ -40,7 +40,12 @@ export const RELATIONSHIP_SCHEMA_DDL: string[] = [
 		target_muted INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS idx_relationship ON relationship (requester_id, target_id)`,
-	`CREATE INDEX IF NOT EXISTS idx_relationship_target ON relationship (target_id)`,
+	// Covering indexes for getFriendIds: each half of its OR seeks to (player, type) and reads
+	// the other id off the index. See apps/api/migrations/0030_relationship_friend_index.sql.
+	`CREATE INDEX IF NOT EXISTS idx_relationship_requester_type
+		ON relationship (requester_id, relationship_type, target_id)`,
+	`CREATE INDEX IF NOT EXISTS idx_relationship_target_type
+		ON relationship (target_id, relationship_type, requester_id)`,
 ]
 
 /** A stored relationship row (snake_case columns, one row per player pair). */

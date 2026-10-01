@@ -4,6 +4,7 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import { z } from 'zod'
 
 import {
+	countAccountsByDeviceId,
 	countAccountsBySignupIp,
 	createAccount,
 	GAME_VERSION,
@@ -24,6 +25,7 @@ import {
 	writeAuditLog,
 } from '@repo/domain'
 import {
+	flagVar,
 	intVar,
 	logger,
 	withCleanSpec,
@@ -116,24 +118,46 @@ const FAKE_OCULUS_CACHED_LOGIN = {
  * Signup caps, enforced on create_account only (never on login — an existing account
  * always stays reachable, however many accounts its owner has since accumulated).
  *
- * Two independent arms, because they fail in opposite ways:
+ * Three independent arms, because they fail in different ways:
  *  - Per verified platform id (a Steam-proven SteamID64). The sharp one: it can't be
  *    spoofed and can't be reset by changing networks. Only binds on a platform
  *    create_account — the password/anonymous path has no platform identity to count,
- *    so the IP arm is the only thing standing between it and bulk signup.
+ *    so the other two arms are all that stands between it and bulk signup.
  *  - Per signup IP. Coarse: households, NAT and shared campus/mobile networks put many
  *    legitimate players behind one address, so this WILL be the arm that produces false
  *    positives. It counts `signupIp` (immutable), so an abuser can't reset their own
- *    count by hopping networks.
+ *    count by hopping networks — but a VPN gives them a fresh counter per exit, which
+ *    is exactly how one player made 150 accounts, six per address, in a weekend.
+ *  - Per client device id. Narrower than an IP (a household shares an address, not an
+ *    install) and stable across VPN hops, which is the hole in the IP arm it covers. It
+ *    counts the last-seen `deviceId`, which a login moves; see the field's notes in
+ *    accounts-db for why an immutable copy isn't worth keeping. Client-chosen and
+ *    unverified, so it catches a stock client, not a script that fabricates ids. Skipped
+ *    when the signup posts no `device_id` (the website's don't).
  *
- * These are the defaults. An operator overrides either arm with the matching worker var
- * (`MAX_ACCOUNTS_PER_PLATFORM_ID` / `MAX_ACCOUNTS_PER_IP` in wrangler.jsonc `vars`), and
- * setting one to 0 disables that arm entirely — which a small private server that trusts
- * everyone it invites will want, and which the IP arm in particular is worth reaching for
- * if a shared network is being locked out.
+ * These are the defaults. An operator overrides any arm with the matching worker var
+ * (`MAX_ACCOUNTS_PER_PLATFORM_ID` / `MAX_ACCOUNTS_PER_IP` / `MAX_ACCOUNTS_PER_DEVICE_ID`
+ * in wrangler.jsonc `vars`), and setting one to 0 disables that arm entirely — which a
+ * small private server that trusts everyone it invites will want, and which the IP arm in
+ * particular is worth reaching for if a shared network is being locked out.
  */
 const DEFAULT_MAX_ACCOUNTS_PER_PLATFORM_ID = 3
 const DEFAULT_MAX_ACCOUNTS_PER_IP = 3
+const DEFAULT_MAX_ACCOUNTS_PER_DEVICE_ID = 3
+
+/**
+ * Whether a `create_account` with no platform — a password account, which is what the
+ * website mints — is accepted at all (`PASSWORD_SIGNUP`; see context.ts). Off by default:
+ * such an account has no identity but the address it came from, so the caps above are
+ * the only thing limiting it, and a VPN or Tor exit resets the IP arm every N accounts.
+ * That is how one player made 150 accounts in a weekend. A game-client signup always
+ * carries a Steam or Meta identity and is untouched by this switch.
+ *
+ * Refused as `invalid_grant` with this description, which `www` translates for the form
+ * (see its auth-messages.ts) — keep the two in step.
+ */
+const DEFAULT_PASSWORD_SIGNUP = false
+const PASSWORD_SIGNUP_DISABLED_DESCRIPTION = 'password signup is disabled'
 
 /** New players start in the Orientation room (RoomId 13) — the new-user flow. */
 const ORIENTATION_ROOM_ID = 13
@@ -608,9 +632,13 @@ const app = new Hono<App>()
 				'',
 				'**`create_account`** — mints a new account with an auto-assigned random username',
 				'(players do not pick one initially) and places it in the Orientation room. A posted',
-				'`password` becomes the login credential. Subject to two independent signup caps,',
-				'per verified platform id and per signup IP (`MAX_ACCOUNTS_PER_PLATFORM_ID` /',
-				'`MAX_ACCOUNTS_PER_IP`; either disabled by setting it to 0). If it asserts a',
+				'`password` becomes the login credential. Without a `platform` this is a PASSWORD',
+				'account (what the website makes), accepted only while `PASSWORD_SIGNUP` is on —',
+				'off by default, refused as `invalid_grant` "password signup is disabled". Subject',
+				'to three independent signup caps,',
+				'per verified platform id, per signup IP and per client `device_id`',
+				'(`MAX_ACCOUNTS_PER_PLATFORM_ID` / `MAX_ACCOUNTS_PER_IP` / `MAX_ACCOUNTS_PER_DEVICE_ID`;',
+				'any disabled by setting it to 0). If it asserts a',
 				'`platform`, that platform must be verifiable (Steam or Meta) and its `platform_auth`',
 				'must verify.',
 				'',
@@ -752,7 +780,7 @@ const app = new Hono<App>()
 			//   - cached_login authenticates purely by platform identity.
 			//   - create_account that asserts a platform: we won't bind an identity we can't
 			//     prove. (create_account with NO platform is the password-account path —
-			//     allowed, but binds no platformId.)
+			//     binds no platformId, and is open only while PASSWORD_SIGNUP says so.)
 			//
 			// A password grant is NOT gated: the password already proved who it is. It posts
 			// its platform proof too, and if that verifies we LINK the identity to the account
@@ -841,6 +869,17 @@ const app = new Hono<App>()
 			//    via create_account or /account/me/changepassword.
 			let accountId: string
 			if (grantType === 'create_account') {
+				// The password-account path (no platform) is a switch, off by default: see
+				// DEFAULT_PASSWORD_SIGNUP. Checked first, before anything is read or minted —
+				// a closed door costs no D1 round trip and burns no cap slot.
+				if (!platformAsserted && !flagVar(c.env.PASSWORD_SIGNUP, DEFAULT_PASSWORD_SIGNUP)) {
+					logger.info('signup refused: password signup is disabled', { ip: clientIp })
+					return c.json(
+						{ error: 'invalid_grant', error_description: PASSWORD_SIGNUP_DISABLED_DESCRIPTION },
+						400
+					)
+				}
+
 				// A banned player's next move is a new account, so the evasion arms are checked
 				// BEFORE one is minted — against the only identity a signup has, the IP it came
 				// from and the platform identity it just proved. Refusing after the fact (as the
@@ -872,7 +911,7 @@ const app = new Hono<App>()
 
 				// Signup caps. Checked before minting anything, so a rejected signup leaves no
 				// account behind. Each arm is skipped when it's disabled (var <= 0) or when its
-				// identity is unknown (no verified platform id / no client IP) — an unattributable
+				// identity is unknown (no verified platform id / no client IP / no device id) — an unattributable
 				// signup can't be counted against anyone, and lumping them together would lock out
 				// real players. The disabled check comes first so a disabled arm costs no D1 read.
 				const maxPerPlatformId = intVar(
@@ -880,6 +919,10 @@ const app = new Hono<App>()
 					DEFAULT_MAX_ACCOUNTS_PER_PLATFORM_ID
 				)
 				const maxPerIp = intVar(c.env.MAX_ACCOUNTS_PER_IP, DEFAULT_MAX_ACCOUNTS_PER_IP)
+				const maxPerDeviceId = intVar(
+					c.env.MAX_ACCOUNTS_PER_DEVICE_ID,
+					DEFAULT_MAX_ACCOUNTS_PER_DEVICE_ID
+				)
 				if (
 					maxPerPlatformId > 0 &&
 					verifiedPlatformId !== null &&
@@ -910,6 +953,20 @@ const app = new Hono<App>()
 						{
 							error: 'invalid_grant',
 							error_description: 'too many accounts created from this network',
+						},
+						400
+					)
+				}
+				if (
+					maxPerDeviceId > 0 &&
+					deviceId !== '' &&
+					(await countAccountsByDeviceId(c.env.DB, deviceId)) >= maxPerDeviceId
+				) {
+					logger.info('signup rejected: per-device account limit', { deviceId, ip: clientIp })
+					return c.json(
+						{
+							error: 'invalid_grant',
+							error_description: 'too many accounts created from this device',
 						},
 						400
 					)

@@ -64,12 +64,6 @@ export const FORBIDDEN_RESPONSE = {
 	description: 'A valid token, but not the room’s creator or a co-owner (empty body)',
 }
 
-/** The 403 the friends-only routes return (empty body). */
-export const NOT_FRIENDS_RESPONSE = {
-	description:
-		'A valid token, but the caller is not that player (nor a friend of theirs) (empty body)',
-}
-
 // ---- Parameters ------------------------------------------------------------
 
 /** A digits-only id path parameter (the route patterns constrain these to `[0-9]+`). */
@@ -982,9 +976,18 @@ export const PhotonAccessTokenDto = z.object({
 		.describe('The caller’s current instance, from presence; null when they’re in none'),
 })
 
-/** `GET /rooms/{roomId}/playerdata/me` — per-room player data. Nothing stores any yet. */
+/**
+ * `GET`/`PUT /rooms/{roomId}/playerdata/me` — the caller's per-room player data, as a
+ * bare one-key object. `Data` is the blob the client last posted, verbatim (a base64
+ * string the server never decodes); empty when the player has never saved any.
+ */
 export const PlayerDataDto = z.object({
-	Data: z.string().describe('Always empty — no per-room player data is stored'),
+	Data: z.string().describe('The saved blob as posted; empty when nothing is saved'),
+})
+
+/** `PUT /rooms/{roomId}/playerdata/me` — the form body the client saves its data with. */
+export const PlayerDataRequest = z.object({
+	data: z.string().describe('The blob to store, verbatim (the client posts base64)'),
 })
 
 /**

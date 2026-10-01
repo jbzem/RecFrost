@@ -31,16 +31,21 @@ import {
 	getRoomInstanceSummariesByRoom,
 	getRoomInvite,
 	getStoredRoomInstance,
+	hasRoomInviteTo,
 	InviteMode,
 	isClubMember,
 	isPlayerBannedFromRoom,
 	MatchmakingErrorCode,
 	MessageType,
 	MOST_ACTIVE_CLUBHOUSE_LIMIT,
+	putPlayerSettingsIfChanged,
+	readPlayerSettings,
 	recordRoomVisit,
 	recordStat,
 	refreshInstanceFullness,
+	Role,
 	RoomInstanceType,
+	roomRoles,
 	setPresence,
 	setRoomInstanceInProgress,
 	setRoomInstancePrivate,
@@ -417,10 +422,7 @@ async function getPlayerSettings(
 	env: Env,
 	accountId: number
 ): Promise<Record<string, string> | null> {
-	return env.RECFLARE_PLAYER_SETTINGS.get<Record<string, string>>(
-		`player:${accountId}`,
-		'json'
-	).catch(() => null)
+	return readPlayerSettings(env.RECFLARE_PLAYER_SETTINGS, accountId).catch(() => null)
 }
 
 /**
@@ -441,15 +443,16 @@ async function readAvoidJuniors(env: Env, accountId: number): Promise<boolean> {
  *
  * The write MERGES, exactly as the `playersettings` worker's own PUT does: the map holds
  * every setting the player has (OOBE state, tutorial mask, …), so storing this one on its
- * own would wipe the rest. Read-modify-write on KV isn't atomic, but the same is true of
- * the settings worker, and two writers racing over one player's own settings means that
- * player toggling two options in the same instant.
+ * own would wipe the rest. The key is whichever spelling the map already carries, which is
+ * why this doesn't go through `mergePlayerSettings` — but like it, re-posting the stored
+ * value writes nothing. A KV read failure throws (a 500) rather than reading as an empty
+ * map, which would store this one key over everything the player had.
  */
 async function writeAvoidJuniors(env: Env, accountId: number, value: boolean): Promise<void> {
-	const stored = (await getPlayerSettings(env, accountId)) ?? {}
+	const stored = await readPlayerSettings(env.RECFLARE_PLAYER_SETTINGS, accountId)
 	const merged: Record<string, string> = { ...stored }
 	merged[findAvoidJuniorsKey(merged) ?? AVOID_JUNIORS_KEY] = value ? 'True' : 'False'
-	await env.RECFLARE_PLAYER_SETTINGS.put(`player:${accountId}`, JSON.stringify(merged))
+	await putPlayerSettingsIfChanged(env.RECFLARE_PLAYER_SETTINGS, accountId, stored, merged)
 }
 
 /**
@@ -737,6 +740,43 @@ function persistenceVersionRefusal(
 		return v !== null && v >= MIN_UNLOADABLE_PERSISTENCE_VERSION_2023
 	})
 	return tooNew ? MatchmakingErrorCode.UpdateRequired : null
+}
+
+/**
+ * "This room is private" — the refusal on a room that isn't published, asked for by id by
+ * someone it doesn't admit (see {@link canEnterRoom}). Told plainly, as the private-event
+ * refusal below is: whoever reaches this holds the room id already, and the only thing an
+ * opaque NoSuchRoom would buy is a room that fails to load for no visible reason.
+ */
+const ROOM_IS_PRIVATE = MatchmakingErrorCode.RoomIsPrivate
+
+/**
+ * Whether a room MATCHMAKE may enter this room at all, before any instance is found or
+ * made. A PUBLISHED room — Public, or Unlisted (reachable by whoever holds the id, just
+ * not listed) — admits anyone; every other accessibility (Private, and the two Dev_ ones)
+ * is a room its owner hasn't released, and admits only:
+ *
+ * - its creator, and anyone holding a role on it (Host and up: everyone named in `Roles`
+ *   is working on the room, whether or not it is published), or
+ * - a player holding a live `room_invite` into it — an invite is how a private room's
+ *   people bring someone in.
+ *
+ * Without this, a private INSTANCE was the only thing "private" meant to the room routes:
+ * `JoinMode` 2 spawned a fresh instance of any room whose id you had, published or not,
+ * and the unpublished builds a player's visit history named were open to anyone who
+ * could read it. Dorms are not gated here — they are Unlisted by construction and reach
+ * their guests through the invite routes, not this one.
+ */
+async function canEnterRoom(db: D1Database, room: Room, accountId: number): Promise<boolean> {
+	if (
+		room.Accessibility === Accessibility.Public ||
+		room.Accessibility === Accessibility.Unlisted
+	) {
+		return true
+	}
+	if (room.CreatorAccountId === accountId) return true
+	if (roomRoles(room).some((r) => r.AccountId === accountId && r.Role !== Role.None)) return true
+	return hasRoomInviteTo(db, accountId, Number(room.RoomId))
 }
 
 /**
@@ -1392,7 +1432,8 @@ async function resolveRoomInstance(
 	roomKey: string,
 	isPrivate: boolean,
 	ownerId: number,
-	requestedSubRoomId?: number
+	requestedSubRoomId?: number,
+	gateOnAccessibility = false
 ): Promise<ResolvedInstance> {
 	const id = Number.parseInt(roomKey, 10)
 	const requested = Number.isNaN(id)
@@ -1411,6 +1452,20 @@ async function resolveRoomInstance(
 	if (await isPlayerBannedFromRoom(c.env.DB, f.roomId, ownerId)) {
 		logger.info('matchmake refused: player banned from room', { roomId: f.roomId, ownerId })
 		return { instance: null, errorCode: BANNED_FROM_ROOM }
+	}
+
+	// An unpublished room admits only its people (see canEnterRoom). Only the ROOM routes
+	// ask for this: an event or a clubhouse matchmake has already decided the caller
+	// belongs (invited to the event, a member of the club) and its room may well be private
+	// — that's what holding an event in your own room looks like. Checked against the room
+	// actually entered, after any substitution, and before an instance exists.
+	if (gateOnAccessibility && !(await canEnterRoom(c.env.DB, room, ownerId))) {
+		logger.info('matchmake refused: room is not published and player is not admitted', {
+			roomId: f.roomId,
+			ownerId,
+			accessibility: room.Accessibility,
+		})
+		return { instance: null, errorCode: ROOM_IS_PRIVATE }
 	}
 
 	// The build this player is on, from their token. A 2023 client can't load a scene
@@ -1484,6 +1539,11 @@ async function resolveRoomInstance(
  * reads the same envelope back — so they are the same handler under a second path rather
  * than a copy that can drift.
  *
+ * The one gate that is these routes' alone is the room's ACCESSIBILITY (see
+ * {@link canEnterRoom}): a room that isn't published answers `RoomIsPrivate` (25) to anyone
+ * but its creator, its role holders and its invitees, in either join mode — a private
+ * instance of an unpublished room is still a way into it.
+ *
  * `subRoomId` is optional: absent, `resolveRoomInstance` falls back to the room's first
  * subroom (its default entrance).
  */
@@ -1498,7 +1558,10 @@ async function matchmakeIntoRoom(c: Context<App>) {
 		c.req.param('roomId') ?? '',
 		joinMode === 2,
 		id,
-		subRoomId
+		subRoomId,
+		// Named by id, so the room's own accessibility is the gate (canEnterRoom): an
+		// unpublished room refuses everyone but its people and its invitees with 25.
+		true
 	)
 	if (!instance) return matchmakeResult(c, errorCode, null)
 	await enterRoom(c, id, instance)
@@ -2281,16 +2344,23 @@ const app = new Hono<App>()
 	)
 
 	// The newer client's join-by-player (`/matchmake/v2/player/{playerId}`). Same move as
-	// the v1 follow above — land in the instance the target is standing in — but gated on
-	// the `room_invite` table rather than friendship: the caller must hold a standing
-	// invite FROM the target (the newer client's invite frame doesn't always carry a
-	// redeemable `InviteId` — the party fan-out sends 0 — so it redeems by player instead
-	// of by row id, and this is that path). Everything the target sent stays checkable:
-	// the newest row is enough, since any live row is authorization.
+	// the v1 follow above — land in the instance the target is standing in — and the newer
+	// client sends it for two different buttons, so it admits the caller two ways:
 	//
-	// The row is consumed on a successful join: an invite authorizes one entry, and since
-	// this path follows the target's LIVE presence rather than the room the invite named,
-	// keeping it would leave a standing key into whatever instance they're in later.
+	// - An INVITE: the caller holds a standing `room_invite` row FROM the target (the newer
+	//   client's invite frame doesn't always carry a redeemable `InviteId` — the party
+	//   fan-out sends 0 — so it redeems by player instead of by row id, and this is that
+	//   path). Everything the target sent stays checkable: the newest row is enough, since
+	//   any live row is authorization. The row is consumed on a successful join: an invite
+	//   authorizes one entry, and since this path follows the target's LIVE presence rather
+	//   than the room the invite named, keeping it would leave a standing key into whatever
+	//   instance they're in later.
+	// - A FRIEND in a PUBLIC instance: "Join" on a friend's profile or the friends list,
+	//   which sends no invite at all. Gated on mutual friendship like the v1 follow, and —
+	//   unlike it — on the instance being public: a private session admits people through
+	//   the invite branch, which is what an invite is for. Nothing is consumed.
+	//
+	// Every refusal is checked with the invite (if any) still standing, so a retry works.
 	//
 	// Like the follow and invite paths, this hands out real Photon coordinates without
 	// going through resolveRoomInstance, so it carries its own ban and build checks.
@@ -2303,14 +2373,18 @@ const app = new Hono<App>()
 			summary: 'Join the player who invited you (v2)',
 			description: [
 				'Places the caller into the room instance the target player is currently in, read from',
-				'the target’s stored presence. INVITEES ONLY: the caller must hold a `room_invite` row',
-				'FROM the target (as `POST /invite` writes them) — the newer client redeems an invite by',
-				'its sender when the frame carries no usable `RoomInviteId`. The invite is SINGLE-USE:',
-				'a successful join deletes the row, so the same invite can’t be redeemed again into',
-				'wherever that player goes next (a refusal leaves it standing, so a retry still works).',
+				'the target’s stored presence. Two ways in. INVITE: the caller holds a `room_invite`',
+				'row FROM the target (as `POST /invite` writes them) — the newer client redeems an',
+				'invite by its sender when the frame carries no usable `RoomInviteId`. The invite is',
+				'SINGLE-USE: a successful join deletes the row, so the same invite can’t be redeemed',
+				'again into wherever that player goes next (a refusal leaves it standing, so a retry',
+				'still works). FRIEND: with no invite, a mutual friend may join the target’s PUBLIC',
+				'instance (the profile/friends-list “Join”); a private instance still takes an invite.',
 				'Answers 40',
-				'(RoomInviteExpired) when no invite stands (expiry deletes rows, so “never invited” and',
-				'“expired” are one answer), 2 (PlayerNotOnline) when the target isn’t in a room, 17',
+				'(RoomInviteExpired) when neither holds — not a friend, or a friend whose instance is',
+				'private — so nothing about a stranger’s whereabouts leaks (expiry deletes rows, so',
+				'“never invited” and “expired” are one answer), 2 (PlayerNotOnline) when the target',
+				'isn’t in a room, 17',
 				'(AlreadyInTargetInstance) when the caller is already standing there, 3',
 				'(InsufficientSpace) when it filled up, and 55 (BannedFromRoom) when the caller is',
 				'banned from that room.',
@@ -2342,22 +2416,41 @@ const app = new Hono<App>()
 			if (id === null) return unauthorized(c)
 
 			const targetId = Number.parseInt(c.req.param('playerId'), 10)
-			// The gate: a standing invite from the target to the caller. No row means never
-			// invited or already swept — the same answer either way, since expiry deletes
-			// rows. This also refuses joining yourself: nobody holds a self-invite.
+			// The first key: a standing invite from the target to the caller. No row means
+			// never invited or already swept — the same thing, since expiry deletes rows.
+			// Nobody holds a self-invite, and nobody is their own friend, so joining yourself
+			// is refused by both keys.
 			const invite = await getLatestRoomInviteBetween(c.env.DB, targetId, id)
-			if (invite === null) {
-				logger.info('v2 player matchmake refused: no invite from target', { targetId, id })
+			// The second: mutual friendship, which admits the caller only to a PUBLIC instance
+			// (checked below, once the instance is known). Not read when an invite stands.
+			const friend = invite === null && (await areFriends(c.env.DB, id, targetId))
+			if (invite === null && !friend) {
+				logger.info('v2 player matchmake refused: no invite from target, not a friend', {
+					targetId,
+					id,
+				})
 				return matchmakeResult(c, MatchmakingErrorCode.RoomInviteExpired, null)
 			}
 
-			// Where the inviter is NOW, straight off their presence row — not the invite's
+			// Where the target is NOW, straight off their presence row — not an invite's
 			// stored RoomId, which records where they were when they sent it.
 			const targetPresence = await getPresence<RoomInstance>(c.env.DB, targetId)
 			const instance = targetPresence?.roomInstance ?? null
 			if (!instance) {
 				logger.info('v2 player matchmake refused: target is not in a room', { targetId, id })
 				return matchmakeResult(c, MatchmakingErrorCode.PlayerNotOnline, null)
+			}
+
+			// Friendship alone doesn't open a private session: that's what an invite is for.
+			// The same opaque 40 as a stranger gets — a distinct code would tell a friend the
+			// target is in a private room, which the target's presence settings may hide.
+			if (invite === null && instance.isPrivate) {
+				logger.info('v2 player matchmake refused: friend’s instance is private, no invite', {
+					roomInstanceId: instance.roomInstanceId,
+					targetId,
+					id,
+				})
+				return matchmakeResult(c, MatchmakingErrorCode.RoomInviteExpired, null)
 			}
 
 			// Already standing there: nothing to do, and re-entering would churn presence and
@@ -2407,12 +2500,13 @@ const app = new Hono<App>()
 			// heartbeat replays it and their own friend fan-out fires.
 			await enterRoom(c, id, instance)
 
-			// The invite is spent: it was authorization for THIS join, and leaving the row
+			// An invite is spent: it was authorization for THIS join, and leaving the row
 			// standing would make it a permanent key into whatever instance the target is in
 			// later — this path reads their live presence, not the room the invite named.
 			// Dropped only once the caller is actually in, so every refusal above (target not
 			// in a room, full, banned, wrong build) leaves the invite redeemable for a retry.
-			await deleteRoomInvite(c.env.DB, invite.RoomInviteId)
+			// A friend's join consumed nothing; there's nothing to drop.
+			if (invite !== null) await deleteRoomInvite(c.env.DB, invite.RoomInviteId)
 			return matchmakeResult(c, MatchmakingErrorCode.Success, instance)
 		}
 	)
@@ -2697,7 +2791,7 @@ const app = new Hono<App>()
 			responses: {
 				200: json(
 					MatchmakeResponse,
-					'The instance (or a null instance with errorCode 20 on an unknown room, 55 when banned)'
+					'The instance (or a null instance with errorCode 20 on an unknown room, 55 when banned, 25 on an unpublished room the caller is not admitted to)'
 				),
 				401: UNAUTHORIZED_RESPONSE,
 			},
@@ -2722,7 +2816,7 @@ const app = new Hono<App>()
 			responses: {
 				200: json(
 					MatchmakeResponse,
-					'The instance (or a null instance with errorCode 20 on an unknown room, 55 when banned)'
+					'The instance (or a null instance with errorCode 20 on an unknown room, 55 when banned, 25 on an unpublished room the caller is not admitted to)'
 				),
 				401: UNAUTHORIZED_RESPONSE,
 			},
@@ -2772,7 +2866,7 @@ const app = new Hono<App>()
 			responses: {
 				200: json(
 					MatchmakeV2Response,
-					'The instance (or a null RoomInstance with ErrorCode 20 on an unknown room, 55 when banned)'
+					'The instance (or a null RoomInstance with ErrorCode 20 on an unknown room, 55 when banned, 25 on an unpublished room the caller is not admitted to)'
 				),
 				401: UNAUTHORIZED_RESPONSE,
 			},
@@ -2795,7 +2889,7 @@ const app = new Hono<App>()
 			responses: {
 				200: json(
 					MatchmakeV2Response,
-					'The instance (or a null RoomInstance with ErrorCode 20 on an unknown room, 55 when banned)'
+					'The instance (or a null RoomInstance with ErrorCode 20 on an unknown room, 55 when banned, 25 on an unpublished room the caller is not admitted to)'
 				),
 				401: UNAUTHORIZED_RESPONSE,
 			},

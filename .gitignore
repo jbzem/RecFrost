@@ -50,7 +50,3 @@ yarn-error.log*
 .claude/settings.local.json
 
 .idea
-
-# Local deploy logs
-deploy-all.log
-deploy-six.log

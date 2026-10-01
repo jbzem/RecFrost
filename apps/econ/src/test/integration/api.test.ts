@@ -1,11 +1,16 @@
-import { adminSecretsStore, env } from 'cloudflare:test'
+import {
+	adminSecretsStore,
+	createExecutionContext,
+	createScheduledController,
+	env,
+	waitOnExecutionContext,
+} from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { beforeAll, describe, expect, test } from 'vitest'
 
-import '../../econ.app'
-
 import {
 	getOwnedInventionIds,
+	getPendingGifts,
 	getProgression,
 	INVENTORY_INVENTION_SCHEMA_DDL,
 	OUTFIT_SCHEMA_DDL,
@@ -14,6 +19,7 @@ import {
 	RECEIVED_GIFT_SCHEMA_DDL,
 	ROOM_SCHEMA_DDL,
 } from '@repo/domain'
+import { PlatformType } from '@repo/domain/src/enums'
 
 // The `invention` table belongs to the `api` worker; buyInvention reads it, so its DDL
 // is built here too (see the same cross-worker import in econ.app.ts).
@@ -23,6 +29,9 @@ import {
 	importCustomAvatarItem,
 } from '../../../../api/src/custom-avatar-items-db'
 import { SCHEMA_DDL as INVENTION_SCHEMA_DDL } from '../../../../api/src/inventions-db'
+// The Discord link table (owned by `auth`, kept current by `www`) is what the weekly
+// supporter gift reads its roles from.
+import { linkPlatformIdentity, PLATFORM_SCHEMA_DDL } from '../../../../auth/src/platform-db'
 // The notification-type ids the hub carries, from the worker that owns them — asserting
 // against the enum rather than a copied number is what keeps these frames honest.
 import { NotificationType } from '../../../../notify/src/notification-types'
@@ -80,6 +89,13 @@ import { CHALLENGE_GIFT_SCHEMA_DDL, CHALLENGE_STATUS_SCHEMA_DDL } from '../../ch
 // since rolled over.
 import { buildRotation, rotationIndex, withWeeklyGift } from '../../challenge-rotation'
 import { CONSUMABLE_SCHEMA_DDL, grantConsumable } from '../../consumables-db'
+import {
+	DISCORD_ROLE_GIFT_MESSAGE,
+	grantDiscordRoleGift,
+	grantDiscordRoleGifts,
+	parseRoleTokens,
+} from '../../discord-role-gift'
+import { scheduled } from '../../econ.app'
 import { EQUIPMENT_SCHEMA_DDL, grantEquipment } from '../../equipment-db'
 import {
 	grantCustomAvatarItem,
@@ -90,6 +106,7 @@ import { INVENTORY_SCHEMA_DDL } from '../../inventory-db'
 import { REWARD_STATUS_SCHEMA_DDL } from '../../reward-db'
 import { ROOM_CONSUMABLE_SCHEMA_DDL, ROOM_INVENTORY_SCHEMA_DDL } from '../../room-consumable-db'
 import { ROOM_BALANCE_SCHEMA_DDL, ROOM_CURRENCY_SCHEMA_DDL } from '../../room-currency-db'
+import { ROOM_KEY_SCHEMA_DDL } from '../../room-key-db'
 
 import type { CatalogLoadRow, CatalogRow, CatalogValue, StoreListing } from '../../catalog-db'
 import type { Env } from '../../context'
@@ -196,6 +213,10 @@ beforeAll(async () => {
 	for (const stmt of ROOM_BALANCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of ROOM_CONSUMABLE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	for (const stmt of ROOM_INVENTORY_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	for (const stmt of ROOM_KEY_SCHEMA_DDL) await env.DB.prepare(stmt).run()
+	// The platform link table (owned by `auth`) — the Discord supporter gift reads the roles
+	// `www` records on each Discord link.
+	for (const stmt of PLATFORM_SCHEMA_DDL) await env.DB.prepare(stmt).run()
 	// Presence (owned by the `match` worker) — a new room currency is pushed to everyone
 	// standing in the room, which is read from here.
 	for (const stmt of PRESENCE_SCHEMA_DDL) await env.DB.prepare(stmt).run()
@@ -1922,10 +1943,304 @@ describe('econ endpoints', () => {
 		})
 	})
 
-	test('GET /api/roomkeys/v1/room returns []', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/room?roomId=1`)
-		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual([])
+	// Room 2511 is seeded as account 1's, with account 2 as co-owner.
+	describe('room keys', () => {
+		type RoomKey = {
+			RoomKeyId: number
+			ReplicationId: string
+			RoomId: number
+			Name: string
+			Description: string
+			Price: number
+			PurchaseCurrencyId: string | null
+			CreatedAt: string
+			ImageName: string | null
+			Type: number
+		}
+
+		const create = async (fields: Record<string, string>, headers?: Record<string, string>) =>
+			exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/create`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers },
+				body: new URLSearchParams(fields),
+			})
+
+		const drainFrames = async (): Promise<
+			Array<{
+				accountId: number
+				notificationType: string | number
+				payload: Record<string, unknown>
+			}>
+		> =>
+			(
+				env.RECFLARE_NOTIFICATIONS_HUB.getByName('global') as unknown as {
+					drainFrames(): Promise<
+						Array<{
+							accountId: number
+							notificationType: string | number
+							payload: Record<string, unknown>
+						}>
+					>
+				}
+			).drainFrames()
+
+		// The create's reply, as the live client reads it — NOT the `{ Value, Success, Error,
+		// error_id }` envelope the currency and consumable writes answer in.
+		const envOf = async (res: Response) =>
+			(await res.json()) as {
+				Status: number
+				RoomKey: RoomKey | null
+			}
+		const keyOf = async (res: Response) => (await envOf(res)).RoomKey!
+
+		const keysOf = async (roomId: number) =>
+			(await (
+				await exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/room?roomId=${roomId}`)
+			).json()) as RoomKey[]
+
+		// The body exactly as the client posts it.
+		const body = {
+			Type: 'Key',
+			RoomId: '2511',
+			Name: 'my key',
+			Description: 'testsdfsdfsdf',
+			Price: '50',
+		}
+
+		test('GET /api/roomkeys/v1/room is public and empty for a room with none', async () => {
+			expect(await keysOf(2511)).toEqual([])
+			expect(await keysOf(99999)).toEqual([])
+			const res = await exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/room`)
+			expect(res.status).toBe(200)
+			expect(await res.json()).toEqual([])
+		})
+
+		test('POST create is gated to the room’s creator or a co-owner', async () => {
+			expect((await create(body)).status).toBe(401)
+			expect((await create(body, await bearer('999'))).status).toBe(403)
+
+			for (const bad of [
+				{ ...body, RoomId: '99999' },
+				{ ...body, RoomId: 'nope' },
+				{ ...body, Name: '  ' },
+			]) {
+				const res = await create(bad, await bearer('1'))
+				expect(res.status).toBe(200)
+				expect(await envOf(res)).toEqual({ Status: 1, RoomKey: null })
+			}
+			expect(await keysOf(2511)).toEqual([])
+		})
+
+		test('POST create lists the key and the room read serves it back', async () => {
+			const res = await create(body, await bearer('1'))
+			expect(res.status).toBe(200)
+			const envelope = await envOf(res)
+			expect(Object.keys(envelope)).toEqual(['Status', 'RoomKey'])
+			expect(envelope.Status).toBe(0)
+			const created = envelope.RoomKey!
+			// The key as the live client reads it, member for member and in its order.
+			expect(Object.keys(created)).toEqual([
+				'RoomKeyId',
+				'ReplicationId',
+				'RoomId',
+				'Name',
+				'Description',
+				'Price',
+				'PurchaseCurrencyId',
+				'CreatedAt',
+				'ImageName',
+				'Type',
+			])
+			expect(created).toMatchObject({
+				RoomId: 2511,
+				Name: 'my key',
+				Description: 'testsdfsdfsdf',
+				Price: 50,
+				PurchaseCurrencyId: null,
+				// Null, not '', until a key carries art.
+				ImageName: null,
+				// The posted enum NAME (`Key`) comes back as its ordinal.
+				Type: 0,
+			})
+			// A NUMERIC id, with a GUID beside it.
+			expect(Number.isInteger(created.RoomKeyId)).toBe(true)
+			expect(created.ReplicationId).toMatch(/^[0-9a-f-]{36}$/)
+			expect(new Date(created.CreatedAt).toISOString()).toBe(created.CreatedAt)
+
+			// The body's Type is stored as the name it arrived as.
+			const row = await env.DB.prepare('SELECT key_type FROM room_key WHERE room_key_id = ?1')
+				.bind(created.RoomKeyId)
+				.first<{ key_type: string }>()
+			expect(row?.key_type).toBe('Key')
+
+			expect(await keysOf(2511)).toEqual([created])
+
+			// A co-owner may list one too, and the list is oldest first.
+			const second = await keyOf(await create({ ...body, Name: 'second' }, await bearer('2')))
+			expect(second.RoomKeyId).toBeGreaterThan(created.RoomKeyId)
+			expect((await keysOf(2511)).map((k) => k.Name)).toEqual(['my key', 'second'])
+		})
+
+		test('POST create pushes LocalRoomKeyCreated to the room and the creator', async () => {
+			const now = Math.floor(Date.now() / 1000)
+			const putInRoom = async (accountId: number, roomId: number) =>
+				env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+					.bind(
+						JSON.stringify({
+							accountId,
+							roomInstance: { roomInstanceId: 1000000 + roomId, roomId, subRoomId: roomId },
+							expiresAt: now + 900,
+						})
+					)
+					.run()
+			await putInRoom(320, 2511)
+			await putInRoom(321, 1)
+			await drainFrames()
+
+			const created = await keyOf(await create({ ...body, Name: 'pushed' }, await bearer('1')))
+			const frames = await drainFrames()
+			expect(frames.map((f) => f.accountId).sort((a, b) => a - b)).toEqual([1, 320])
+			expect(frames.every((f) => f.notificationType === NotificationType.LocalRoomKeyCreated)).toBe(
+				true
+			)
+			// The frame IS the create response.
+			expect(frames[0].payload).toEqual(created)
+
+			for (const id of [320, 321]) {
+				await env.DB.prepare('DELETE FROM presence WHERE account_id = ?1').bind(id).run()
+			}
+		})
+
+		test('POST create masks a name players will see, and defaults the rest', async () => {
+			const res = await create({ RoomId: '2511', Name: 'shit key' }, await bearer('1'))
+			const created = await keyOf(res)
+			expect(created.Name).toBe('**** key')
+			expect(created).toMatchObject({ Description: '', Price: 0, Type: 0 })
+			const row = await env.DB.prepare('SELECT key_type FROM room_key WHERE room_key_id = ?1')
+				.bind(created.RoomKeyId)
+				.first<{ key_type: string }>()
+			expect(row?.key_type).toBe('Key')
+			// A negative price is floored at nothing.
+			const free = await keyOf(await create({ ...body, Price: '-5' }, await bearer('1')))
+			expect(free.Price).toBe(0)
+		})
+
+		test('POST awardbulk records the CALLER as holding each key, reporting each entry', async () => {
+			const award = async (payload: unknown, headers?: Record<string, string>) =>
+				exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/awardbulk`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', ...headers },
+					body: JSON.stringify(payload),
+				})
+			const held = async () =>
+				(
+					await env.DB.prepare(
+						'SELECT room_key_id, account_id, awarded_at FROM room_key_player ORDER BY room_key_id'
+					).all<{ room_key_id: number; account_id: number; awarded_at: string }>()
+				).results
+
+			const key = await keyOf(await create({ ...body, Name: 'awarded' }, await bearer('1')))
+			const id = key.RoomKeyId
+
+			// Auth-gated.
+			expect((await award([{ RoomKeyId: id, AccountId: 42 }])).status).toBe(401)
+			expect(await held()).toEqual([])
+
+			// The body exactly as the client posts it. The token's player gets the key —
+			// the body's `AccountId` is ignored, even when it names someone else.
+			const res = await award(
+				[
+					{ RoomKeyId: id, AccountId: 205 },
+					{ RoomKeyId: 999999, AccountId: 205 },
+					{ AccountId: 205 },
+				],
+				await bearer('42')
+			)
+			expect(res.status).toBe(200)
+			// An array of envelopes, one per entry — `error_id` lowercase beside the rest.
+			const awarded = {
+				Value: { RoomKeyId: id, AccountId: 42 },
+				Success: true,
+				Error: null,
+				error_id: null,
+			}
+			expect(await res.json()).toEqual([
+				awarded,
+				{ Value: null, Success: false, Error: 'No such room key', error_id: null },
+				{ Value: null, Success: false, Error: 'Invalid room key', error_id: null },
+			])
+			const rows = await held()
+			expect(rows).toEqual([{ room_key_id: id, account_id: 42, awarded_at: expect.any(String) }])
+
+			// Held once: a repeat award succeeds and leaves the row as it was.
+			const again = await award([{ RoomKeyId: id, AccountId: 42 }], await bearer('42'))
+			expect(await again.json()).toEqual([awarded])
+			expect(await held()).toEqual(rows)
+
+			// Another player holds their own copy; a body that is no list has no entries.
+			await award([{ RoomKeyId: id }], await bearer('43'))
+			expect((await held()).map((r) => r.account_id).sort()).toEqual([42, 43])
+			expect(await (await award({ RoomKeyId: id }, await bearer('42'))).json()).toEqual([])
+
+			await env.DB.prepare('DELETE FROM room_key_player').run()
+			await env.DB.prepare('DELETE FROM room_key').run()
+		})
+
+		test('POST owns/bulk answers each (player, key) pair, reading the body’s AccountId', async () => {
+			const post = async (path: string, payload: unknown, headers?: Record<string, string>) =>
+				exports.default.fetch(`${ORIGIN}/api/roomkeys/v1/${path}`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', ...headers },
+					body: JSON.stringify(payload),
+				})
+
+			const key = await keyOf(await create({ ...body, Name: 'held' }, await bearer('1')))
+			const id = key.RoomKeyId
+			await post('awardbulk', [{ RoomKeyId: id, AccountId: 42 }], await bearer('42'))
+
+			// Auth-gated.
+			expect((await post('owns/bulk', [{ AccountId: 42, RoomKeyId: id }])).status).toBe(401)
+
+			// Asked by 43 about 42 and others: the body's player is the one checked. A bare
+			// array back, in the order posted; the malformed entry is skipped.
+			const res = await post(
+				'owns/bulk',
+				[
+					{ AccountId: 42, RoomKeyId: id },
+					{ AccountId: 43, RoomKeyId: id },
+					{ AccountId: 42, RoomKeyId: 999999 },
+					{ AccountId: 42 },
+				],
+				await bearer('43')
+			)
+			expect(res.status).toBe(200)
+			expect(await res.json()).toEqual([
+				{ AccountId: 42, RoomKeyId: id, DoesPlayerOwnRoomKey: true },
+				{ AccountId: 43, RoomKeyId: id, DoesPlayerOwnRoomKey: false },
+				{ AccountId: 42, RoomKeyId: 999999, DoesPlayerOwnRoomKey: false },
+			])
+
+			// Nothing to ask is nothing to answer.
+			expect(await (await post('owns/bulk', [], await bearer('43'))).json()).toEqual([])
+			expect(await (await post('owns/bulk', {}, await bearer('43'))).json()).toEqual([])
+
+			await env.DB.prepare('DELETE FROM room_key_player').run()
+			await env.DB.prepare('DELETE FROM room_key').run()
+		})
+
+		test('POST create refuses the eleventh key in a room', async () => {
+			// MaxKeysPerRoom is 10 (apps/api/static/api-config-v2.json). Fill up to it…
+			while ((await keysOf(2511)).length < 10) {
+				const res = await create({ ...body, Name: 'filler' }, await bearer('1'))
+				expect((await envOf(res)).Status).toBe(0)
+			}
+			// …and the next is refused, leaving the room at ten.
+			const res = await create({ ...body, Name: 'one too many' }, await bearer('1'))
+			expect(res.status).toBe(200)
+			expect(await envOf(res)).toEqual({ Status: 1, RoomKey: null })
+			expect((await keysOf(2511)).length).toBe(10)
+			await env.DB.prepare('DELETE FROM room_key').run()
+		})
 	})
 
 	test('GET /api/roomconsumables/v1/roomConsumable/room/:id/me returns []', async () => {
@@ -2604,12 +2919,17 @@ describe('econ endpoints', () => {
 				listing.PurchasableItemId
 			)
 			// A skin's or a consumable's thumbnail is blanked — the dump names a PNG per item that
-			// this server does not have — and nothing else about a drop changes.
+			// this server does not have — and a drop with Context -1 (the hair dyes and the dice
+			// skins) is served with Context 0. Nothing else about a drop changes.
 			const blanked =
 				listing.GiftDrop.EquipmentModificationGuid !== '' ||
 				listing.GiftDrop.ConsumableItemDesc !== ''
+			const expectedDrop = {
+				...listing.GiftDrop,
+				Context: listing.GiftDrop.Context === -1 ? 0 : listing.GiftDrop.Context,
+			}
 			expect(served.GiftDrop).toEqual(
-				blanked ? { ...listing.GiftDrop, ThumbnailImageName: '' } : listing.GiftDrop
+				blanked ? { ...expectedDrop, ThumbnailImageName: '' } : expectedDrop
 			)
 			// The other edit to a listing: the dump was taken mid-sale (80% off nearly everything,
 			// no end date), and the client posts the sale price it computes — which this server,
@@ -2653,7 +2973,7 @@ describe('econ endpoints', () => {
 		expect(skinsJson.every((sk) => soldGuids.includes(sk.ModificationGuid))).toBe(true)
 		expect(soldSkins.every((i) => i.GiftDrop.ThumbnailImageName === '')).toBe(true)
 		expect(soldSkins.length).toBeGreaterThan(unlisted.length)
-		// A "(Gold)" skin — thirteen, all from the capture — is a prestige item: 100,000 tokens,
+		// A "(Gold)" skin — thirteen, all from the capture — is a prestige item: 5,000,000 tokens,
 		// the same for a subscriber, no sale. A "(Gold)" AVATAR item is priced as the dump has it.
 		const goldSkins = soldSkins.filter((i) => i.GiftDrop.FriendlyName.includes('(Gold)'))
 		expect(goldSkins.length).toBeGreaterThan(10)
@@ -5745,6 +6065,9 @@ describe('econ endpoints', () => {
 			'POST /api/roomcurrencies/v1/createCurrency',
 			'POST /api/roomcurrencies/v1/createPurchaseOffer',
 			'POST /api/roomcurrencies/v1/updateCurrency',
+			'POST /api/roomkeys/v1/awardbulk',
+			'POST /api/roomkeys/v1/create',
+			'POST /api/roomkeys/v1/owns/bulk',
 			'POST /api/storefronts/v2/buyItem',
 			'POST /api/storefronts/v3/buyInvention',
 			'POST /api/ugcPurchasables/v1/items/bulk',
@@ -6409,5 +6732,222 @@ describe('plus token reload', () => {
 		expect(() => plusReloadSql(0, 500)).toThrow('positive integer')
 		expect(() => plusReloadSql(1.5, 500)).toThrow('positive integer')
 		expect(() => plusReloadSql(100, -1)).toThrow('non-negative integer')
+	})
+})
+
+// ---- Discord supporter gift ----------------------------------------------------------------
+
+// The cron: every account whose Discord link holds a role mapped in DISCORD_ROLE_TOKENS is
+// boxed its best role's tokens, every time it fires. Driven through `grantDiscordRoleGifts`
+// with the var set on a copy of the bindings.
+describe('discord role gift', () => {
+	const ROLE_A = '1077000000000000001'
+	const ROLE_B = '1077000000000000002'
+	const UNMAPPED = '1077000000000000009'
+	const MAP = `${ROLE_A}=2500,${ROLE_B}=10000`
+
+	const giftEnv = (map: string | undefined): Env => ({ ...env, DISCORD_ROLE_TOKENS: map }) as Env
+
+	const drainFrames = async (): Promise<
+		Array<{ accountId: number; notificationType: number; payload: Record<string, unknown> }>
+	> =>
+		(
+			env.RECFLARE_NOTIFICATIONS_HUB.getByName('global') as unknown as {
+				drainFrames(): Promise<
+					Array<{ accountId: number; notificationType: number; payload: Record<string, unknown> }>
+				>
+			}
+		).drainFrames()
+
+	/**
+	 * The run reads EVERY Discord link, and the table is shared across this file, so each
+	 * test starts from only its own rows.
+	 */
+	const onlyDiscordLinks = async (
+		links: Array<[accountId: number, userId: string, roles: string[]]>
+	) => {
+		await env.DB.prepare('DELETE FROM platform_account WHERE platform = ?1')
+			.bind(PlatformType.Discord)
+			.run()
+		for (const [accountId, userId, roles] of links) {
+			await linkPlatformIdentity(env.DB, accountId, PlatformType.Discord, userId, roles)
+		}
+	}
+
+	const tokens = (accountId: number) =>
+		getBalance(env.DB, accountId, CurrencyType.RecCenterTokens, DEFAULT_STARTING_TOKENS)
+
+	test('parses the role map, keeping the last amount for a repeated role and skipping bad entries', () => {
+		expect(parseRoleTokens(MAP)).toEqual({
+			roles: [
+				{ roleId: ROLE_A, tokens: 2500 },
+				{ roleId: ROLE_B, tokens: 10000 },
+			],
+			rejected: [],
+		})
+		// Whitespace and commas both separate; a role named twice keeps its LAST amount.
+		expect(parseRoleTokens(` ${ROLE_A}=1, ${ROLE_B}=2\n${ROLE_A}=3 `).roles).toEqual([
+			{ roleId: ROLE_A, tokens: 3 },
+			{ roleId: ROLE_B, tokens: 2 },
+		])
+		// A role's NAME, a zero, a negative, a fraction and a bare id are each one rejected
+		// entry, and the good ones beside them still parse.
+		expect(
+			parseRoleTokens(`supporter=100,${ROLE_A}=0,${ROLE_B}=-5,1=1.5,${UNMAPPED},${ROLE_A}=250`)
+		).toEqual({
+			roles: [{ roleId: ROLE_A, tokens: 250 }],
+			rejected: ['supporter=100', `${ROLE_A}=0`, `${ROLE_B}=-5`, '1=1.5', UNMAPPED],
+		})
+		expect(parseRoleTokens(undefined)).toEqual({ roles: [], rejected: [] })
+		expect(parseRoleTokens('')).toEqual({ roles: [], rejected: [] })
+	})
+
+	test('does nothing until a role is mapped', async () => {
+		await onlyDiscordLinks([[9301, '900000000000000301', [ROLE_A]]])
+		await drainFrames()
+		await expect(
+			grantDiscordRoleGifts(giftEnv(undefined), DEFAULT_STARTING_TOKENS)
+		).resolves.toMatchObject({ skipped: true, granted: 0 })
+		// A map with nothing valid in it is off too, not a run that pays nobody.
+		await expect(
+			grantDiscordRoleGifts(giftEnv('supporter=100'), DEFAULT_STARTING_TOKENS)
+		).resolves.toMatchObject({ skipped: true, granted: 0 })
+		expect(await tokens(9301)).toBe(DEFAULT_STARTING_TOKENS)
+		expect(await getPendingGifts(env.DB, 9301)).toEqual([])
+		expect(await drainFrames()).toEqual([])
+	})
+
+	// The deployed test config maps no role, so the real handler takes the "off" path: pinned
+	// so a deploy without the var is a logged no-op and not a scheduled error.
+	test('runs from the scheduled handler and stays off without the var', async () => {
+		await onlyDiscordLinks([[9301, '900000000000000301', [ROLE_A]]])
+		const ctx = createExecutionContext()
+		await scheduled(createScheduledController(), env, ctx)
+		await waitOnExecutionContext(ctx)
+		expect(await tokens(9301)).toBe(DEFAULT_STARTING_TOKENS)
+		expect(await getPendingGifts(env.DB, 9301)).toEqual([])
+	})
+
+	test('boxes each holder of a mapped role its best role’s tokens, one box per account', async () => {
+		await onlyDiscordLinks([
+			[9311, '900000000000000311', [ROLE_A]],
+			[9312, '900000000000000312', [ROLE_B, UNMAPPED]],
+			[9313, '900000000000000313', [ROLE_A, ROLE_B]],
+			[9314, '900000000000000314', [UNMAPPED]],
+			[9315, '900000000000000315', []],
+		])
+		// A Steam link on a paid account is not a Discord link and carries no roles.
+		await linkPlatformIdentity(env.DB, 9311, PlatformType.Steam, '76561190000009311')
+		await drainFrames()
+
+		const summary = await grantDiscordRoleGifts(giftEnv(MAP), DEFAULT_STARTING_TOKENS)
+		expect(summary).toEqual({
+			skipped: false,
+			roles: 2,
+			links: 5,
+			granted: 3,
+			tokens: 2500 + 10000 + 10000,
+			failed: 0,
+		})
+
+		// The balance is the signup grant PLUS the gift: the grant is seeded first, so a
+		// never-touched balance doesn't start from the gift alone. Two mapped roles pay the
+		// HIGHER one, not both.
+		expect(await tokens(9311)).toBe(DEFAULT_STARTING_TOKENS + 2500)
+		expect(await tokens(9312)).toBe(DEFAULT_STARTING_TOKENS + 10000)
+		expect(await tokens(9313)).toBe(DEFAULT_STARTING_TOKENS + 10000)
+		expect(await tokens(9314)).toBe(DEFAULT_STARTING_TOKENS)
+		expect(await tokens(9315)).toBe(DEFAULT_STARTING_TOKENS)
+
+		// One box: from the Coach, tokens and nothing else, `AvatarItemType` NULL so the
+		// client doesn't go looking for an avatar item.
+		const boxes = await getPendingGifts(env.DB, 9313)
+		expect(boxes).toHaveLength(1)
+		expect(boxes[0]).toMatchObject({
+			FromPlayerId: 1,
+			GiftContext: 0,
+			CurrencyType: CurrencyType.RecCenterTokens,
+			Currency: 10000,
+			AvatarItemDesc: '',
+			AvatarItemType: null,
+			ConsumableItemDesc: '',
+			EquipmentModificationGuid: '',
+			Xp: 0,
+			Message: DISCORD_ROLE_GIFT_MESSAGE,
+		})
+		expect(await getPendingGifts(env.DB, 9314)).toEqual([])
+
+		// Per box: the balance frame first — the RESULTING total into the -2 bucket, keyed
+		// `Platform` — then the box's announcement carrying the same amount the box does.
+		const frames = await drainFrames()
+		expect(frames.filter((f) => f.accountId === 9311)).toEqual([
+			{
+				accountId: 9311,
+				notificationType: NotificationType.StorefrontBalanceUpdate,
+				payload: {
+					Balance: DEFAULT_STARTING_TOKENS + 2500,
+					CurrencyType: CurrencyType.RecCenterTokens,
+					Platform: -2,
+				},
+			},
+			{
+				accountId: 9311,
+				notificationType: NotificationType.GiftPackageReceivedImmediate,
+				payload: expect.objectContaining({
+					Id: (await getPendingGifts(env.DB, 9311))[0]!.Id,
+					FromPlayerId: 1,
+					Currency: 2500,
+					CurrencyType: CurrencyType.RecCenterTokens,
+					AvatarItemType: null,
+					GiftContext: 0,
+					Message: DISCORD_ROLE_GIFT_MESSAGE,
+					BalanceType: -2,
+				}),
+			},
+		])
+		expect(frames.map((f) => f.accountId)).toEqual([9311, 9311, 9312, 9312, 9313, 9313])
+	})
+
+	// The same grant, paid to ONE account on demand: what `www`'s benefits claim calls on an
+	// account's first Discord link, with the roles Discord just served rather than a stored
+	// link. Same map, same best-role pick, same box; null — and no writes — when nothing maps.
+	test('pays one account its role’s gift on demand', async () => {
+		await onlyDiscordLinks([])
+		await drainFrames()
+		await expect(grantDiscordRoleGift(giftEnv(undefined), 9331, [ROLE_A], 100)).resolves.toBeNull()
+		await expect(grantDiscordRoleGift(giftEnv(MAP), 9331, [UNMAPPED], 100)).resolves.toBeNull()
+		expect(await getPendingGifts(env.DB, 9331)).toEqual([])
+		expect(await drainFrames()).toEqual([])
+
+		await expect(
+			grantDiscordRoleGift(giftEnv(MAP), 9331, [ROLE_A, ROLE_B], DEFAULT_STARTING_TOKENS)
+		).resolves.toEqual({ roleId: ROLE_B, tokens: 10000 })
+		expect(await tokens(9331)).toBe(DEFAULT_STARTING_TOKENS + 10000)
+		expect(await getPendingGifts(env.DB, 9331)).toMatchObject([
+			{ Currency: 10000, AvatarItemType: null, Message: DISCORD_ROLE_GIFT_MESSAGE },
+		])
+		expect((await drainFrames()).map((f) => [f.accountId, f.notificationType])).toEqual([
+			[9331, NotificationType.StorefrontBalanceUpdate],
+			[9331, NotificationType.GiftPackageReceivedImmediate],
+		])
+	})
+
+	test('every run pays again — the schedule is the cadence — and a lapsed role is not paid', async () => {
+		await onlyDiscordLinks([
+			[9321, '900000000000000321', [ROLE_A]],
+			[9322, '900000000000000322', [ROLE_A]],
+		])
+		await grantDiscordRoleGifts(giftEnv(MAP), DEFAULT_STARTING_TOKENS)
+		// www's sweep found 9322 no longer holds the role; 9323 claimed in between.
+		await linkPlatformIdentity(env.DB, 9322, PlatformType.Discord, '900000000000000322', [])
+		await linkPlatformIdentity(env.DB, 9323, PlatformType.Discord, '900000000000000323', [ROLE_B])
+
+		const summary = await grantDiscordRoleGifts(giftEnv(MAP), DEFAULT_STARTING_TOKENS)
+		expect(summary).toMatchObject({ granted: 2, tokens: 2500 + 10000 })
+		expect(await tokens(9321)).toBe(DEFAULT_STARTING_TOKENS + 5000)
+		expect(await tokens(9322)).toBe(DEFAULT_STARTING_TOKENS + 2500)
+		expect(await tokens(9323)).toBe(DEFAULT_STARTING_TOKENS + 10000)
+		expect(await getPendingGifts(env.DB, 9321)).toHaveLength(2)
+		expect(await getPendingGifts(env.DB, 9322)).toHaveLength(1)
 	})
 })

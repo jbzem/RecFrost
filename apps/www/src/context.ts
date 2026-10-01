@@ -46,6 +46,16 @@ export type Env = SharedHonoEnv & {
 	 */
 	STARTING_TOKENS?: string | number
 	/**
+	 * The Discord supporter gift's role map — `<roleId>=<tokens>` pairs — the same knob
+	 * `econ`'s cron reads, injected into every worker from RECFLARE_DISCORD_ROLE_TOKENS at
+	 * deploy. www reads it for ONE grant: the first time an account links its Discord through
+	 * the benefits claim, it is boxed the amount its role would earn from one cron run, so a
+	 * new supporter isn't waiting a whole schedule for their first gift (see
+	 * `grantDiscordRoleGift` in econ's discord-role-gift.ts, which does the paying). Unset —
+	 * or mapping none of the member's roles — awards nothing and the claim proceeds as before.
+	 */
+	DISCORD_ROLE_TOKENS?: string
+	/**
 	 * The most RecCenterTokens one staff token gift can carry (see src/staff.ts). A typo guard
 	 * rather than a policy, since a credit can't be taken back. Unset means
 	 * DEFAULT_MAX_TOKEN_GIFT (10,000).
@@ -56,6 +66,15 @@ export type Env = SharedHonoEnv & {
 	 * MAX_TOKEN_GIFT. Unset means DEFAULT_MAX_XP_GIFT (100).
 	 */
 	MAX_XP_GIFT?: string | number
+	/**
+	 * Whether web signup is open — the same `PASSWORD_SIGNUP` knob `auth` reads to accept
+	 * or refuse a no-platform `create_account`, delivered to both workers by the deploy
+	 * scripts. `on`/`off`; unset means OFF. Read here so `/api/config` can report signup
+	 * closed (the SPA hides the form) and `/api/signup` can refuse with the player-facing
+	 * sentence, instead of every visitor discovering it from auth's refusal. It is a
+	 * courtesy, not the enforcement: auth refuses regardless of what www says.
+	 */
+	PASSWORD_SIGNUP?: string | number | boolean
 	/**
 	 * Service binding to the `auth` worker — how the BFF reaches it, so the browser's real
 	 * IP survives the hop (see wrangler.jsonc and src/upstream.ts `postAuthForm`).
@@ -125,6 +144,12 @@ export type Env = SharedHonoEnv & {
 	 * all closes the claim, exactly as an unset one does.
 	 */
 	DISCORD_BENEFITS_ROLE_IDS?: string
+	/**
+	 * The bot user's token for the scheduled role refresh (discord-roles.ts). Optional in
+	 * effect: the binding must exist for the deploy, but a placeholder value just leaves the
+	 * sweep off. The claim never reads it.
+	 */
+	DISCORD_BOT_TOKEN: SecretsStoreSecret
 }
 
 /** Variables can be extended */

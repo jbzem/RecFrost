@@ -17,3 +17,33 @@ export function intVar(value: unknown, fallback: number): number {
 	const parsed = Number(value)
 	return Number.isInteger(parsed) ? parsed : fallback
 }
+
+/**
+ * Read an on/off worker var, falling back to `fallback` when it is unset or unusable.
+ *
+ * Accepts the spellings an operator plausibly types — `on`/`off`, `true`/`false`,
+ * `yes`/`no`, `1`/`0`, in any case — plus a real boolean or number, since a var declared
+ * in wrangler.jsonc `vars` keeps its JSON type while one set with `--var` is a string (see
+ * `intVar`). Anything else (an empty string, `enabled`, a typo) is treated as unset rather
+ * than read as true or false: a switch that guards something sensitive must not flip on a
+ * misspelling, so the documented default is the safe failure.
+ */
+export function flagVar(value: unknown, fallback: boolean): boolean {
+	if (typeof value === 'boolean') return value
+	if (typeof value === 'number') return value === 1 ? true : value === 0 ? false : fallback
+	if (typeof value !== 'string') return fallback
+	switch (value.trim().toLowerCase()) {
+		case 'on':
+		case 'true':
+		case 'yes':
+		case '1':
+			return true
+		case 'off':
+		case 'false':
+		case 'no':
+		case '0':
+			return false
+		default:
+			return fallback
+	}
+}

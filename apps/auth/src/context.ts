@@ -26,6 +26,17 @@ export type Env = SharedHonoEnv & {
 	// read them through `intVar`, never as a bare number.
 	MAX_ACCOUNTS_PER_PLATFORM_ID?: string | number
 	MAX_ACCOUNTS_PER_IP?: string | number
+	MAX_ACCOUNTS_PER_DEVICE_ID?: string | number
+	/**
+	 * Whether `create_account` accepts a signup with NO platform identity — the password
+	 * account the website makes (`www` `/api/signup`), or anything else that posts the
+	 * grant without a `platform`. `on`/`off` (or true/false, 1/0); unset means OFF, so a
+	 * server opens web signup deliberately. Read through `flagVar`. The `www` worker reads
+	 * the same knob to hide its form and refuse its endpoint, so the two agree for free.
+	 * Platform signups (Steam, Meta) are never governed by this — they always have an
+	 * identity to authenticate with later, and the caps above are what limit them.
+	 */
+	PASSWORD_SIGNUP?: string | number | boolean
 	/**
 	 * Which linked arms a ban is enforced through, as a comma-separated list out of `ip`
 	 * and `platform` — or `off` for neither. Unset means BOTH: a ban reaches the accounts

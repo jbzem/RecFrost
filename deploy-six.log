@@ -1,0 +1,239 @@
+--- deploy api ---
+Deploying worker api version 6.1.3-a1a8d51 to api.recfrost.workers.dev
+
+ ⛅️ wrangler 4.132.0
+────────────────────
+Total Upload: 1038.18 KiB / gzip: 247.10 KiB
+Worker Startup Time: 130 ms
+Your Worker has access to the following bindings:
+Binding                                                                                             Resource                  
+env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub, defined in notify)                                Durable Object            
+env.RECFLARE_PLAYER_SETTINGS (4619d33812144967af55d528eaef84a4)                                     KV Namespace              
+env.DB (recflare)                                                                                   D1 Database               
+env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                                        Secrets Store Secret      
+env.DISCORD_PHOTOFEED_WEBHOOK (8bcc9cb8d9924204a40d0f086c28029d/DISCORD_PHOTOFEED_WEBHOOK)          Secrets Store Secret      
+env.ENVIRONMENT ("development")                                                                     Environment Variable      
+env.SENTRY_RELEASE ("(hidden)")                                                                     Environment Variable      
+env.DOMAIN ("(hidden)")                                                                             Environment Variable      
+env.RECFLARE_MAX_API_UPLOAD_BYTES ("67108864")                                                      Environment Variable      
+env.NAME ("(hidden)")                                                                               Environment Variable      
+env.SUBDOMAINS ("(hidden)")                                                                         Environment Variable      
+env.MAX_ACCOUNTS_PER_IP ("(hidden)")                                                                Environment Variable      
+env.MAX_ACCOUNTS_PER_PLATFORM_ID ("(hidden)")                                                       Environment Variable      
+env.PHOTON_REGION ("(hidden)")                                                                      Environment Variable      
+env.MAX_ROOMS_PER_ACCOUNT ("(hidden)")                                                              Environment Variable      
+env.BAN_EVASION_MATCH ("(hidden)")                                                                  Environment Variable      
+env.MAX_CLUBS_PER_ACCOUNT ("(hidden)")                                                              Environment Variable      
+env.PHOTON_REALTIME_APP_ID ("(hidden)")                                                             Environment Variable      
+env.PHOTON_CHAT_APP_ID ("(hidden)")                                                                 Environment Variable      
+env.PHOTON_VOICE_APP_ID ("(hidden)")                                                                Environment Variable      
+env.STARTING_TOKENS ("(hidden)")                                                                    Environment Variable      
+
+Uploaded api (7.31 sec)
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `api.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
+
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
+
+
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_22-20-04_401.log"
+*** deploy api FAILED ***
+--- deploy cdn ---
+Deploying worker cdn version 1.1.1-a1a8d51 to cdn.recfrost.workers.dev
+
+ ⛅️ wrangler 4.132.0 (update available 4.139.0)
+───────────────────────────────────────────────
+🌀 Building list of assets...
+✨ Read 16 files from the assets directory C:\Users\citizen\Desktop\RecFrostDevelopment\Servers\APIServers\RecFrost_Server-MainBranch\apps\cdn\static
+🌀 Starting asset upload...
+No updated asset files to upload. Proceeding with deployment...
+Total Upload: 391.01 KiB / gzip: 89.34 KiB
+Worker Startup Time: 24 ms
+Your Worker has access to the following bindings:
+Binding                                                                             Resource                  
+env.CDN_ASSETS (150d541a67264652afbc25b1e40baee2)                                   KV Namespace              
+env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
+env.ASSETS                                                                          Assets                    
+env.ENVIRONMENT ("development")                                                     Environment Variable      
+env.SENTRY_RELEASE ("(hidden)")                                                     Environment Variable      
+env.NAME ("(hidden)")                                                               Environment Variable      
+env.DOMAIN ("(hidden)")                                                             Environment Variable      
+env.SUBDOMAINS ("(hidden)")                                                         Environment Variable      
+env.MAX_ACCOUNTS_PER_IP ("(hidden)")                                                Environment Variable      
+env.MAX_ACCOUNTS_PER_PLATFORM_ID ("(hidden)")                                       Environment Variable      
+env.PHOTON_REGION ("(hidden)")                                                      Environment Variable      
+env.MAX_ROOMS_PER_ACCOUNT ("(hidden)")                                              Environment Variable      
+env.BAN_EVASION_MATCH ("(hidden)")                                                  Environment Variable      
+env.MAX_CLUBS_PER_ACCOUNT ("(hidden)")                                              Environment Variable      
+env.PHOTON_REALTIME_APP_ID ("(hidden)")                                             Environment Variable      
+env.PHOTON_CHAT_APP_ID ("(hidden)")                                                 Environment Variable      
+env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
+env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
+
+Uploaded cdn (7.87 sec)
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `cdn.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
+
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
+
+
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_22-20-19_192.log"
+*** deploy cdn FAILED ***
+--- deploy img ---
+Deploying worker img version 3.0.3-a1a8d51 to img.recfrost.workers.dev
+
+ ⛅️ wrangler 4.132.0 (update available 4.139.0)
+───────────────────────────────────────────────
+🌀 Building list of assets...
+✨ Read 37 files from the assets directory C:\Users\citizen\Desktop\RecFrostDevelopment\Servers\APIServers\RecFrost_Server-MainBranch\apps\img\static
+🌀 Starting asset upload...
+No updated asset files to upload. Proceeding with deployment...
+Total Upload: 1943.68 KiB / gzip: 708.75 KiB
+Worker Startup Time: 19 ms
+Your Worker has access to the following bindings:
+Binding                                                                            Resource                  
+env.IMAGES (fc0cc8767f8247f48a8cb0582c07f966)                                      KV Namespace              
+env.CDN_ASSETS (150d541a67264652afbc25b1e40baee2)                                  KV Namespace              
+env.DB (recflare)                                                                  D1 Database               
+env.ASSETS                                                                         Assets                    
+env.ENVIRONMENT ("development")                                                    Environment Variable      
+env.SENTRY_RELEASE ("(hidden)")                                                    Environment Variable      
+env.IMG_SIGNING_ENABLED (false)                                                    Environment Variable      
+env.IMG_SIGNING_KEY ("MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwg...")                   Environment Variable      
+env.NAME ("(hidden)")                                                              Environment Variable      
+env.DOMAIN ("(hidden)")                                                            Environment Variable      
+env.SUBDOMAINS ("(hidden)")                                                        Environment Variable      
+env.MAX_ACCOUNTS_PER_IP ("(hidden)")                                               Environment Variable      
+env.MAX_ACCOUNTS_PER_PLATFORM_ID ("(hidden)")                                      Environment Variable      
+env.PHOTON_REGION ("(hidden)")                                                     Environment Variable      
+env.MAX_ROOMS_PER_ACCOUNT ("(hidden)")                                             Environment Variable      
+env.BAN_EVASION_MATCH ("(hidden)")                                                 Environment Variable      
+env.MAX_CLUBS_PER_ACCOUNT ("(hidden)")                                             Environment Variable      
+env.PHOTON_REALTIME_APP_ID ("(hidden)")                                            Environment Variable      
+env.PHOTON_CHAT_APP_ID ("(hidden)")                                                Environment Variable      
+env.PHOTON_VOICE_APP_ID ("(hidden)")                                               Environment Variable      
+env.STARTING_TOKENS ("(hidden)")                                                   Environment Variable      
+
+Uploaded img (8.00 sec)
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `img.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
+
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
+
+
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_22-20-33_654.log"
+*** deploy img FAILED ***
+--- deploy mono ---
+Deploying worker mono version 0.0.0-a1a8d51 to mono.recfrost.workers.dev
+
+ ⛅️ wrangler 4.132.0 (update available 4.139.0)
+───────────────────────────────────────────────
+Total Upload: 1446.37 KiB / gzip: 360.29 KiB
+Worker Startup Time: 138 ms
+Your Worker has access to the following bindings:
+Binding                                                                                  Resource                  
+env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub)                                        Durable Object            
+env.RECFLARE_PLAYER_SETTINGS (4619d33812144967af55d528eaef84a4)                          KV Namespace              
+env.DB (recflare)                                                                        D1 Database               
+env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                             Secrets Store Secret      
+env.META_APP_SECRET (8bcc9cb8d9924204a40d0f086c28029d/META_APP_SECRET)                   Secrets Store Secret      
+env.NAME ("(hidden)")                                                                    Environment Variable      
+env.ENVIRONMENT ("development")                                                          Environment Variable      
+env.SENTRY_RELEASE ("(hidden)")                                                          Environment Variable      
+env.DOMAIN ("(hidden)")                                                                  Environment Variable      
+env.SUBDOMAINS ("(hidden)")                                                              Environment Variable      
+env.MAX_ACCOUNTS_PER_IP ("(hidden)")                                                     Environment Variable      
+env.MAX_ACCOUNTS_PER_PLATFORM_ID ("(hidden)")                                            Environment Variable      
+env.PHOTON_REGION ("(hidden)")                                                           Environment Variable      
+env.MAX_ROOMS_PER_ACCOUNT ("(hidden)")                                                   Environment Variable      
+env.BAN_EVASION_MATCH ("(hidden)")                                                       Environment Variable      
+env.MAX_CLUBS_PER_ACCOUNT ("(hidden)")                                                   Environment Variable      
+env.PHOTON_REALTIME_APP_ID ("(hidden)")                                                  Environment Variable      
+env.PHOTON_CHAT_APP_ID ("(hidden)")                                                      Environment Variable      
+env.PHOTON_VOICE_APP_ID ("(hidden)")                                                     Environment Variable      
+env.STARTING_TOKENS ("(hidden)")                                                         Environment Variable      
+
+Uploaded mono (7.91 sec)
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `mono.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
+
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
+
+
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_22-20-48_560.log"
+*** deploy mono FAILED ***
+--- deploy rooms ---
+Deploying worker rooms version 1.0.1-a1a8d51 to rooms.recfrost.workers.dev
+
+ ⛅️ wrangler 4.132.0 (update available 4.139.0)
+───────────────────────────────────────────────
+Total Upload: 549.32 KiB / gzip: 130.92 KiB
+Worker Startup Time: 60 ms
+Your Worker has access to the following bindings:
+Binding                                                                             Resource                  
+env.RECFLARE_NOTIFICATIONS_HUB (NotificationsHub, defined in notify)                Durable Object            
+env.CDN_ASSETS (150d541a67264652afbc25b1e40baee2)                                   KV Namespace              
+env.DB (recflare)                                                                   D1 Database               
+env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
+env.ENVIRONMENT ("development")                                                     Environment Variable      
+env.SENTRY_RELEASE ("(hidden)")                                                     Environment Variable      
+env.NAME ("(hidden)")                                                               Environment Variable      
+env.DOMAIN ("(hidden)")                                                             Environment Variable      
+env.SUBDOMAINS ("(hidden)")                                                         Environment Variable      
+env.MAX_ACCOUNTS_PER_IP ("(hidden)")                                                Environment Variable      
+env.MAX_ACCOUNTS_PER_PLATFORM_ID ("(hidden)")                                       Environment Variable      
+env.PHOTON_REGION ("(hidden)")                                                      Environment Variable      
+env.MAX_ROOMS_PER_ACCOUNT ("(hidden)")                                              Environment Variable      
+env.BAN_EVASION_MATCH ("(hidden)")                                                  Environment Variable      
+env.MAX_CLUBS_PER_ACCOUNT ("(hidden)")                                              Environment Variable      
+env.PHOTON_REALTIME_APP_ID ("(hidden)")                                             Environment Variable      
+env.PHOTON_CHAT_APP_ID ("(hidden)")                                                 Environment Variable      
+env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
+env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
+
+Uploaded rooms (6.29 sec)
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `rooms.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
+
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
+
+
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_22-21-04_038.log"
+*** deploy rooms FAILED ***
+--- deploy storage ---
+Deploying worker storage version 0.1.0-a1a8d51 to storage.recfrost.workers.dev
+
+ ⛅️ wrangler 4.132.0 (update available 4.139.0)
+───────────────────────────────────────────────
+Total Upload: 392.30 KiB / gzip: 89.53 KiB
+Worker Startup Time: 17 ms
+Your Worker has access to the following bindings:
+Binding                                                                             Resource                  
+env.CDN_ASSETS (150d541a67264652afbc25b1e40baee2)                                   KV Namespace              
+env.JWT_SECRET (8bcc9cb8d9924204a40d0f086c28029d/JWT_SECRET)                        Secrets Store Secret      
+env.ENVIRONMENT ("development")                                                     Environment Variable      
+env.SENTRY_RELEASE ("(hidden)")                                                     Environment Variable      
+env.NAME ("(hidden)")                                                               Environment Variable      
+env.DOMAIN ("(hidden)")                                                             Environment Variable      
+env.SUBDOMAINS ("(hidden)")                                                         Environment Variable      
+env.MAX_ACCOUNTS_PER_IP ("(hidden)")                                                Environment Variable      
+env.MAX_ACCOUNTS_PER_PLATFORM_ID ("(hidden)")                                       Environment Variable      
+env.PHOTON_REGION ("(hidden)")                                                      Environment Variable      
+env.MAX_ROOMS_PER_ACCOUNT ("(hidden)")                                              Environment Variable      
+env.BAN_EVASION_MATCH ("(hidden)")                                                  Environment Variable      
+env.MAX_CLUBS_PER_ACCOUNT ("(hidden)")                                              Environment Variable      
+env.PHOTON_REALTIME_APP_ID ("(hidden)")                                             Environment Variable      
+env.PHOTON_CHAT_APP_ID ("(hidden)")                                                 Environment Variable      
+env.PHOTON_VOICE_APP_ID ("(hidden)")                                                Environment Variable      
+env.STARTING_TOKENS ("(hidden)")                                                    Environment Variable      
+
+Uploaded storage (5.61 sec)
+
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mCould not find zone for `storage.recfrost.workers.dev`. Make sure the domain is set up to be proxied by Cloudflare.[0m
+
+  For more details, refer to [4mhttps://developers.cloudflare.com/workers/configuration/routing/routes/#set-up-a-route[0m
+
+
+🪵  Logs were written to "C:\Users\citizen\AppData\Roaming\xdg.config\.wrangler\logs\wrangler-2026-09-24_22-21-17_324.log"
+*** deploy storage FAILED ***
+=== done: failed=6 [ api cdn img mono rooms storage ] ===

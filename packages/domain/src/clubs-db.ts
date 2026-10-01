@@ -1079,6 +1079,26 @@ export async function getClubsByMember(db: D1Database, accountId: number): Promi
 	return parseAll(results)
 }
 
+/**
+ * The PUBLIC clubs an account is an actual member of — what anyone may see of another
+ * player's clubs — oldest club first. {@link getClubsByMember} minus the private ones.
+ */
+export async function getPublicClubsByMember(db: D1Database, accountId: number): Promise<Club[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT c.data AS data
+			 FROM club_member m
+			 JOIN club c ON c.club_id = m.club_id
+			 WHERE m.account_id = ?1 AND m.membership_type >= ?2
+			   AND json_extract(c.data, '$.ClubType') != ?3
+			   AND c.visibility = ?4
+			 ORDER BY json_extract(c.data, '$.CreatedAt') ASC`
+		)
+		.bind(accountId, MEMBER_THRESHOLD, SUBSCRIPTION_CLUB_TYPE, ClubVisibility.Public)
+		.all<ClubRow>()
+	return parseAll(results)
+}
+
 /** Whether an account is an actual member of a club (Member tier or above). */
 export async function isClubMember(
 	db: D1Database,

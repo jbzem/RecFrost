@@ -269,6 +269,15 @@ inconsistency here without checking the client first.
   every non-avatar drop with `AvatarItemType: null` for this reason; `boxAvatarItemType` applies
   it on every surface, so don't coalesce it with `?? 0` anywhere a box is built. This holds for
   every worker that mints a box, not only `econ`.
+- A ban's `Duration` (`api`: `/api/PlayerReporting/v1/moderationBlockDetails`, and the
+  `ModerationKick` frame `www`'s staff ban sends) is the seconds LEFT as of the response — the
+  client counts it down from receipt. It is NOT the ban's full span paired with
+  `TimeoutStartedAt` (start + duration): served that way, the screen read correctly only in
+  the kick frame, sent at the instant the span and the remainder coincide, and every later
+  sign-in showed the whole ban still to run. `TimeoutStartedAt` stays null for a ban; where
+  other implementations set it at all, it names the start of a voice-chat timeout. Other
+  implementations with timed bans keep their set-time private and serve the remainder on
+  every read; `banned_at` here is the staff panel's audit trail, not the client's.
 - Accessibility is sent as the `RoomAccessibility` enum NAME on
   `rooms` `PUT /rooms/:id/subrooms/:sid/accessibility` (`accessibility=Private`), not the
   ordinal the room-level `/rooms/:id/accessibility` takes. The enum has five members

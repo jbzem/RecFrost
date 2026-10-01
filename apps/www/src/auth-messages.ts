@@ -19,7 +19,16 @@ export type AuthAction = 'signup' | 'login'
  * with no platform, sign-in posts `password` — but they're mapped anyway so a future web
  * flow that does assert one can't regress to a bare code.
  */
+/**
+ * Web signup switched off (`PASSWORD_SIGNUP`, enforced by auth). Exported because www's
+ * own `/api/signup` answers with it before ever calling auth, and the two must read the
+ * same on the form.
+ */
+export const PASSWORD_SIGNUP_DISABLED =
+	'Account creation from the website is disabled. Launch the game to create an account.'
+
 const AUTH_MESSAGES: Record<string, string> = {
+	'password signup is disabled': PASSWORD_SIGNUP_DISABLED,
 	'too many accounts created from this network':
 		'Too many accounts have already been created from your network. Try again later, or from a different connection.',
 	'account limit reached for this platform account':

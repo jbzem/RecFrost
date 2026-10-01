@@ -21,6 +21,7 @@ import {
 	getHomeClub,
 	getMembership,
 	getOrCreateSubscriptionClub,
+	getPublicClubsByMember,
 	getSubscriptionClub,
 	getSubscriptionMemberships,
 	glyphLength,
@@ -683,6 +684,35 @@ const app = new Hono<App>()
 			if (id === null) return c.json([])
 			return c.json(await getClubsByCreator(c.env.DB, id))
 		}
+	)
+
+	// The clubs shown on another player's profile: the PUBLIC clubs the account is a
+	// member of. Public — a private club is left out for everyone, the account's own
+	// owner included (they read theirs from /club/mine/member). An unknown account
+	// simply has no clubs.
+	.get(
+		'/account/:accountId{[0-9]+}/clubs',
+		describeRoute({
+			tags: ['Clubs'],
+			summary: 'The public clubs an account is a member of',
+			description: [
+				'The account’s memberships from `club_member`, oldest club first, PUBLIC clubs only',
+				'(private clubs, subscription clubs and pending/denied/banned rows excluded). Public',
+				'(no auth). An unknown account has `[]`.',
+			].join(' '),
+			parameters: [
+				{
+					name: 'accountId',
+					in: 'path',
+					required: true,
+					description: 'Account id (digits only)',
+					schema: { type: 'string' },
+				},
+			],
+			responses: { 200: json(ClubDto.array(), 'The account’s public clubs') },
+		}),
+		async (c) =>
+			c.json(await getPublicClubsByMember(c.env.DB, Number.parseInt(c.req.param('accountId'), 10)))
 	)
 
 	// Club search / browse. Public, non-subscription clubs; `category` filters to that

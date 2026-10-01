@@ -67,6 +67,7 @@ import {
 	getConsumables,
 	grantConsumable,
 } from './consumables-db'
+import { grantDiscordRoleGifts } from './discord-role-gift'
 import { getEquipment, grantEquipment, setEquipmentFavorited } from './equipment-db'
 import {
 	getOwnedCustomAvatarItems,
@@ -82,6 +83,8 @@ import {
 	AwardRoomConsumablesRequest,
 	AwardRoomCurrencyRequest,
 	AwardRoomCurrencyResultList,
+	AwardRoomKeyResultList,
+	AwardRoomKeysRequest,
 	BalanceEntry,
 	BulkPurchaseRequest,
 	BulkPurchaseResponse,
@@ -100,6 +103,7 @@ import {
 	ConsumeGiftRequest,
 	CreatePurchaseOfferRequest,
 	CreateRoomCurrencyRequest,
+	CreateRoomKeyRequest,
 	CustomAvatarItemsResponse,
 	EquipmentUpdateRequest,
 	ErrorResponse,
@@ -117,6 +121,8 @@ import {
 	MakerAiFreeTrialEligibilityResponse,
 	OpaqueJsonBody,
 	OPTIONAL_AUTHED,
+	OwnsRoomKeysRequest,
+	OwnsRoomKeysResponse,
 	ReferralProgressResponse,
 	RoomConsumableDto,
 	RoomConsumableEnvelope,
@@ -126,6 +132,8 @@ import {
 	RoomCurrencyPurchaseOfferEnvelope,
 	RoomCurrencyPurchaseOffersDto,
 	RoomEconConfig,
+	RoomKeyDto,
+	RoomKeyEnvelope,
 	RRPlusSignUpBonus,
 	SaveOutfitRequest,
 	SaveOutfitV4Response,
@@ -154,6 +162,7 @@ import {
 	getRoomCurrency,
 	updateRoomCurrency,
 } from './room-currency-db'
+import { awardRoomKey, createRoomKey, getRoomKeys, ownsRoomKeys } from './room-key-db'
 
 import type { Context } from 'hono'
 import type { GiftContent, Outfit, Progression, StoredGift, XpGrant } from '@repo/domain'
@@ -161,6 +170,7 @@ import type { CustomAvatarItem } from '../../api/src/custom-avatar-items-db'
 import type { SavedInvention } from '../../api/src/inventions-db'
 import type {
 	BalanceResponsePayload,
+	LocalRoomKeyPayload,
 	PurchaseBalanceModificationPayload,
 	RoomCurrencyPayload,
 } from '../../notify/src/notification-payloads'
@@ -172,11 +182,12 @@ import type {
 	WeeklyChallengeRotation,
 } from './challenge-rotation'
 import type { ConsumeResult } from './consumables-db'
-import type { App } from './context'
+import type { App, Env } from './context'
 import type { Equipment } from './equipment-db'
 import type { AvatarItem } from './inventory-db'
 import type { RoomConsumable } from './room-consumable-db'
 import type { RoomCurrency, RoomCurrencyPurchaseOffer } from './room-currency-db'
+import type { RoomKey, RoomKeyHolding } from './room-key-db'
 
 // Invention storage (owned by the `api` worker, on this same `recflare` database).
 // Imported directly rather than copied: these are plain D1 helpers with no bindings of
@@ -270,6 +281,19 @@ const CREATE_CURRENCY_FAILED = 'Failed to create currency'
 const UPDATE_CURRENCY_FAILED = 'Failed to update currency'
 const CREATE_OFFER_FAILED = 'Failed to create purchase offer'
 const SAVE_CONSUMABLE_FAILED = 'Failed to save consumable'
+/**
+ * `Status` on the room-key create's `{ Status, RoomKey }` reply. 0 is the observed success
+ * code; the refusal code has not been observed, so 1 is an assumption.
+ */
+const ROOM_KEY_STATUS_OK = 0
+const ROOM_KEY_STATUS_FAILED = 1
+
+/**
+ * The most keys one room may list — the `RoomKeyConfig.MaxKeysPerRoom` the `api` worker's
+ * config (`apps/api/static/api-config-v2.json`) tells the client, restated here so the server
+ * refuses what the client already knows not to ask for.
+ */
+const MAX_KEYS_PER_ROOM = 10
 
 /**
  * The envelope the create endpoint answers in: `{ Value, Success, Error, error_id }`.
@@ -285,6 +309,19 @@ function roomCurrencyEnvelope(c: Context<App>, value: RoomCurrency | null, error
 		Success: error === undefined,
 		Error: error ?? null,
 		error_id: null,
+	})
+}
+
+/**
+ * The room-key create's envelope: `{ Status, RoomKey }`, as the live client was observed
+ * reading it — NOT the `{ Value, Success, Error, error_id }` the room-currency and consumable
+ * writes beside it answer in. `Status` 0 carries the key; a refusal is a non-zero `Status`
+ * with a null `RoomKey` (the refusal code is an assumption — only success has been observed).
+ */
+function roomKeyEnvelope(c: Context<App>, key: RoomKey | null) {
+	return c.json({
+		Status: key === null ? ROOM_KEY_STATUS_FAILED : ROOM_KEY_STATUS_OK,
+		RoomKey: key,
 	})
 }
 
@@ -380,6 +417,56 @@ async function pushRoomCurrencyChange(
 					playerId,
 					roomId: currency.RoomId,
 					currencyId: currency.CurrencyId,
+					error: err instanceof Error ? err.message : String(err),
+				})
+			}
+		})
+	)
+}
+
+/**
+ * Push `LocalRoomKeyCreated` (120) for a new room key to everyone standing in the room, plus
+ * whoever listed it — the same audience, for the same reason, as a room currency's push: a
+ * key is something every client in the room may offer for sale, and the settings UI that
+ * lists one opens from outside the room, so its author is added separately.
+ *
+ * The frame is typed as the hub's {@link LocalRoomKeyPayload} — the client's own decoder —
+ * and is the stored record verbatim, so the HTTP response and the frame cannot drift apart.
+ * Best-effort: the key has already committed, and a hub hiccup must not fail the request.
+ */
+async function pushRoomKeyCreated(
+	c: Context<App>,
+	key: RoomKey,
+	createdByAccountId: number
+): Promise<void> {
+	const frame: LocalRoomKeyPayload = key
+
+	let occupants: number[] = []
+	try {
+		occupants = await getPlayerIdsInRoom(c.env.DB, key.RoomId)
+	} catch (err) {
+		logger.error('failed to read room presence for a room-key push', {
+			roomId: key.RoomId,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+
+	const playerIds = new Set(occupants)
+	playerIds.add(createdByAccountId)
+
+	await Promise.all(
+		[...playerIds].map(async (playerId) => {
+			try {
+				await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+					playerId,
+					NotificationType.LocalRoomKeyCreated,
+					{ ...frame }
+				)
+			} catch (err) {
+				logger.error('failed to push a room-key notification', {
+					playerId,
+					roomId: key.RoomId,
+					roomKeyId: key.RoomKeyId,
 					error: err instanceof Error ? err.message : String(err),
 				})
 			}
@@ -5426,13 +5513,236 @@ const app = new Hono<App>({ strict: false })
 		}
 	)
 
-	// The player's room keys. Returns "[]".
+	// The player's room keys. Returns "[]": nothing sells a key yet, so nobody holds one.
 	.get('/api/roomkeys/v1/mine', listRoute('The player’s room keys', 'Empty for now'), (c) =>
 		c.json([])
 	)
-	// Room keys for a given room (client calls this on the econ host). [] with no DB.
-	.get('/api/roomkeys/v1/room', listRoute('Room keys for a room', 'Empty for now'), (c) =>
-		c.json([])
+	// The keys a room has listed. Public, like the room's currencies: a key is offered to
+	// whoever walks up to the door it opens. A room with none, an unknown room and a missing
+	// `roomId` are all the same empty list.
+	.get(
+		'/api/roomkeys/v1/room',
+		describeRoute({
+			tags: ['Econ'],
+			summary: 'A room’s keys',
+			description: [
+				'Every key the room named by `roomId` has listed, oldest first.',
+				'',
+				'Public, like `GET /api/roomcurrencies/v1/currencies`. A room with none, an unknown',
+				'room and a missing `roomId` are all the same empty list.',
+			].join('\n'),
+			parameters: [
+				{
+					name: 'roomId',
+					in: 'query',
+					required: false,
+					description: 'The room whose keys to list',
+					schema: { type: 'string' },
+				},
+			],
+			responses: { 200: json(RoomKeyDto.array(), 'The room’s keys, oldest first') },
+		}),
+		async (c) => {
+			const roomId = Number.parseInt(c.req.query('roomId') ?? '', 10)
+			if (!Number.isInteger(roomId)) return c.json([])
+			return c.json(await getRoomKeys(c.env.DB, roomId))
+		}
+	)
+
+	// List a key for a room. Auth-gated (401) and gated to the room's creator or a co-owner
+	// (403) — the same owner-level check the room-currency writes apply.
+	.post(
+		'/api/roomkeys/v1/create',
+		describeRoute({
+			tags: ['Econ'],
+			summary: 'Create a room key',
+			description: [
+				'Lists a key for one room — its name, its description and its price. Form-encoded',
+				'(`Type=Key&RoomId=1162&Name=my%20key&Description=…&Price=50`).',
+				'',
+				'Gated to the room’s CREATOR or a CO-OWNER, like minting a currency. A valid token',
+				'from anyone else is a 403.',
+				'',
+				'`Name` and `Description` are masked by the same word list as every other string a',
+				'player types. A room may list at most 10 keys — the `RoomKeyConfig.MaxKeysPerRoom`',
+				'the `api` config tells the client — and the eleventh is refused.',
+				'',
+				'Answers `{ Status, RoomKey }` — `Status` 0 and the created key, as the live client',
+				'reads it — not the `{ Value, Success, Error, error_id }` envelope the room-currency',
+				'writes use. A recoverable refusal (an unusable `RoomId`, an empty `Name`, an unknown',
+				'room, a full room) is a 200 carrying a non-zero `Status` and a null `RoomKey`; only',
+				'the auth gates answer with an HTTP status of their own.',
+				'',
+				'Pushes `LocalRoomKeyCreated` (120), carrying the same object, to everyone in the',
+				'room and to the caller.',
+			].join('\n'),
+			security: AUTHED,
+			requestBody: form(CreateRoomKeyRequest, 'The key to list'),
+			responses: {
+				200: json(RoomKeyEnvelope, 'The key as created, or a refusal with a non-zero `Status`'),
+				401: UNAUTHORIZED_RESPONSE,
+				403: { description: 'Not the room’s creator or a co-owner (empty body)' },
+			},
+		}),
+		async (c) => {
+			const accountId = await authedId(c)
+			if (accountId === null) return unauthorized(c)
+
+			const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>
+			const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+			const int = (v: unknown, fallback: number): number => {
+				const parsed = Number.parseInt(str(v), 10)
+				return Number.isInteger(parsed) ? parsed : fallback
+			}
+
+			const roomId = int(body.RoomId, Number.NaN)
+			if (!Number.isInteger(roomId)) return roomKeyEnvelope(c, null)
+			const name = str(body.Name).trim()
+			if (name === '') return roomKeyEnvelope(c, null)
+
+			const canManage = await canManageRoomById(c.env.DB, roomId, accountId)
+			if (canManage === null) return roomKeyEnvelope(c, null)
+			if (!canManage) return c.body(null, 403)
+
+			if ((await getRoomKeys(c.env.DB, roomId)).length >= MAX_KEYS_PER_ROOM) {
+				return roomKeyEnvelope(c, null)
+			}
+
+			const key = await createRoomKey(c.env.DB, {
+				RoomId: roomId,
+				Type: str(body.Type).trim() || 'Key',
+				Name: censorSwears(name),
+				Description: censorSwears(str(body.Description)),
+				// A key cannot cost less than nothing.
+				Price: Math.max(0, int(body.Price, 0)),
+			})
+
+			await pushRoomKeyCreated(c, key, accountId)
+			return roomKeyEnvelope(c, key)
+		}
+	)
+
+	// Award the CALLER some room keys. Auth-gated (401); everything else is reported per
+	// entry, each in its OWN `{ Value, Success, Error, error_id }` envelope — the client
+	// decodes a list of single-value envelopes here. The body is a bare array of `{ RoomKeyId,
+	// AccountId }` — `AccountId` is accepted and unused: the token says who gets the key.
+	.post(
+		'/api/roomkeys/v1/awardbulk',
+		describeRoute({
+			tags: ['Econ'],
+			summary: 'Award room keys to the caller',
+			description: [
+				'Records the CALLER as holding each key the body names (`room_key_player`). The body',
+				'is a BARE JSON ARRAY, `[{ "RoomKeyId": 43, "AccountId": 205 }]`; `AccountId` is',
+				'accepted and IGNORED — the token says who is awarded.',
+				'',
+				'A key is held or it isn’t: awarding one the caller already holds succeeds and',
+				'changes nothing.',
+				'',
+				'The answer is an ARRAY OF ENVELOPES — one `{ Value, Success, Error, error_id }` per',
+				'entry, in the order posted, as the client’s decoder reads it; not a bare array of',
+				'awards, and not one envelope around a list. `Value` is `{ RoomKeyId, AccountId }`,',
+				'`AccountId` being the caller. Each entry stands alone: a `RoomKeyId` naming no listed',
+				'key answers `Success` false with a null `Value` (the failure form is an assumption —',
+				'only success has been observed) and leaves the rest to land.',
+				'',
+				'NOTE: this awards to whoever is asking, and nothing is spent for it — the key’s',
+				'`Price` is not charged and no room membership is checked.',
+			].join('\n'),
+			security: AUTHED,
+			requestBody: jsonBody(AwardRoomKeysRequest, 'The keys to give the caller'),
+			responses: {
+				200: json(AwardRoomKeyResultList, 'One result per entry, in the order posted'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const accountId = await authedId(c)
+			if (accountId === null) return unauthorized(c)
+
+			const body = await c.req.json<unknown>().catch(() => null)
+			// A body that is no list has no entries to report on.
+			if (!Array.isArray(body)) return c.json([])
+
+			const failed = (error: string) => ({
+				Value: null,
+				Success: false,
+				Error: error,
+				error_id: null,
+			})
+			const results = []
+			for (const entry of body as unknown[]) {
+				const roomKeyId =
+					typeof entry === 'object' && entry !== null
+						? (entry as { RoomKeyId?: unknown }).RoomKeyId
+						: undefined
+				if (typeof roomKeyId !== 'number' || !Number.isInteger(roomKeyId)) {
+					results.push(failed('Invalid room key'))
+					continue
+				}
+
+				const awardedAt = await awardRoomKey(c.env.DB, accountId, roomKeyId)
+				results.push(
+					awardedAt === null
+						? failed('No such room key')
+						: {
+								Value: { RoomKeyId: roomKeyId, AccountId: accountId },
+								Success: true,
+								Error: null,
+								error_id: null,
+							}
+				)
+			}
+
+			return c.json(results)
+		}
+	)
+
+	// Who holds which room key. Auth-gated (401). The body is a bare array of `{ AccountId,
+	// RoomKeyId }` pairs and — unlike the award's — `AccountId` is READ here: a room asks
+	// about the players standing in it, not only the caller. A bare array back, one answer
+	// per pair.
+	.post(
+		'/api/roomkeys/v1/owns/bulk',
+		describeRoute({
+			tags: ['Econ'],
+			summary: 'Whether players hold room keys',
+			description: [
+				'Answers, for each `{ AccountId, RoomKeyId }` pair posted, whether that player holds',
+				'that key (`room_key_player`). The body is a BARE JSON ARRAY, and so is the answer:',
+				'`[{ "AccountId": 205, "RoomKeyId": 43, "DoesPlayerOwnRoomKey": true }]`, one entry',
+				'per pair in the order posted — no envelope, unlike the award beside it.',
+				'',
+				'`AccountId` is honoured, not replaced by the caller: any signed-in player may ask',
+				'about any player. An unknown key or player is simply not held; an entry without two',
+				'integer ids is skipped.',
+			].join('\n'),
+			security: AUTHED,
+			requestBody: jsonBody(OwnsRoomKeysRequest, 'The (player, key) pairs to check'),
+			responses: {
+				200: json(OwnsRoomKeysResponse, 'One answer per pair, in the order posted'),
+				401: UNAUTHORIZED_RESPONSE,
+			},
+		}),
+		async (c) => {
+			const accountId = await authedId(c)
+			if (accountId === null) return unauthorized(c)
+
+			const body = await c.req.json<unknown>().catch(() => null)
+			if (!Array.isArray(body)) return c.json([])
+
+			const pairs: RoomKeyHolding[] = []
+			for (const entry of body as unknown[]) {
+				if (typeof entry !== 'object' || entry === null) continue
+				const { AccountId, RoomKeyId } = entry as Record<string, unknown>
+				if (typeof AccountId !== 'number' || !Number.isInteger(AccountId)) continue
+				if (typeof RoomKeyId !== 'number' || !Number.isInteger(RoomKeyId)) continue
+				pairs.push({ AccountId, RoomKeyId })
+			}
+
+			const owned = await ownsRoomKeys(c.env.DB, pairs)
+			return c.json(pairs.map((pair, i) => ({ ...pair, DoesPlayerOwnRoomKey: owned[i] })))
+		}
 	)
 
 	// The Rec Room Plus sign-up bonus: which bonus is running and the token price window
@@ -5723,4 +6033,16 @@ app.get(
 	)
 )
 
-export default app
+export { app }
+
+// The cron (wrangler.jsonc `triggers`, which sets how often): box every Discord supporter
+// the tokens their role is mapped to in DISCORD_ROLE_TOKENS. A no-op, logged once, until the
+// operator maps a role — see discord-role-gift.ts. The signup grant is seeded before the credit,
+// as every other faucet here does, so it reads the same knob.
+export const scheduled: ExportedHandlerScheduledHandler<Env> = (_controller, env, ctx) => {
+	ctx.waitUntil(grantDiscordRoleGifts(env, intVar(env.STARTING_TOKENS, DEFAULT_STARTING_TOKENS)))
+}
+
+// A Worker only runs `scheduled` when it's on the default export, so econ takes the object
+// form the runtime requires (as `www` does for its role sweep and `match` for presence).
+export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Env>

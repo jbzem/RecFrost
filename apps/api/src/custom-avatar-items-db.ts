@@ -131,6 +131,16 @@ export interface CustomAvatarItem {
  */
 export const OUTFIT_TYPE_CUSTOM_SHIRT = 105
 
+/**
+ * The most tokens a PLAYER-MADE item may sell for, inclusive. Enforced on the create and
+ * the edit (`POST`/`PUT /api/customAvatarItems/v1`), the only two writes a player has; the
+ * client has no ceiling of its own — its `minPriceForPublicItem` is a floor. First-party
+ * items are not bound by it: their prices come off the storefront dump and several sit
+ * above it (migrations/0032_custom_avatar_item_price_cap.sql clamps only the player-made
+ * rows, told apart by `BaseAvatarItemId`).
+ */
+export const MAX_PLAYER_ITEM_PRICE = 1000
+
 /** What `POST /api/customAvatarItems/v1` needs to create an item. */
 export interface CreateCustomAvatarItemInput {
 	/** The item's id. Chosen by the caller because the upload keys are derived from it. */

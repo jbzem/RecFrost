@@ -296,6 +296,44 @@ export async function deleteImage(db: D1Database, image: SavedImage): Promise<vo
 }
 
 /**
+ * Set an image's `Accessibility` (0 private, 1 public) in place on the stored record.
+ * Authorization — the caller must be the image's `PlayerId`, and a locked image
+ * (`AccessibilityLocked`, set by moderation) refuses — is the route's job
+ * (see modifyaccessibility).
+ */
+export async function setImageAccessibility(
+	db: D1Database,
+	image: SavedImage,
+	accessibility: number
+): Promise<void> {
+	await db
+		.prepare(
+			"UPDATE image SET data = json_set(data, '$.Accessibility', CAST(?2 AS INTEGER)) WHERE id = ?1"
+		)
+		.bind(image.Id, accessibility)
+		.run()
+}
+
+/**
+ * Set an image's `Description` in place on the stored record; `null` clears it.
+ * Authorization (the caller must be the image's `PlayerId`) is the route's job
+ * (see modifydescription).
+ */
+export async function setImageDescription(
+	db: D1Database,
+	image: SavedImage,
+	description: string | null
+): Promise<void> {
+	// json_set with a bound NULL stores SQL NULL, not JSON null, so spell the null out.
+	const sql =
+		description === null
+			? "UPDATE image SET data = json_set(data, '$.Description', json('null')) WHERE id = ?1"
+			: "UPDATE image SET data = json_set(data, '$.Description', ?2) WHERE id = ?1"
+	const stmt = db.prepare(sql)
+	await (description === null ? stmt.bind(image.Id) : stmt.bind(image.Id, description)).run()
+}
+
+/**
  * The public images taken in a room, for the room's photo feed. Only publicly
  * accessible images (Accessibility === 1) are returned. `filter` narrows by
  * `SavedImageType` (0 = all types); `sort` orders the feed — `1` puts the most
@@ -518,9 +556,11 @@ async function getRoomNames(db: D1Database, ids: number[]): Promise<Map<number, 
 }
 
 /**
- * The global slideshow feed — the most recent publicly-listable ShareCamera photos
- * across all rooms (Accessibility 0 or 1, Type 1), newest first, capped at `limit`.
- * Only ShareCamera images are surfaced (not room/profile/invention thumbnails). Each
+ * The global slideshow feed — the most recent PUBLIC ShareCamera photos across all rooms
+ * (Accessibility 1, Type 1), newest first, capped at `limit`. Accessibility 0 is a
+ * private photo — the same bar every other public image read here applies — and the
+ * feed is anonymous, so it must never surface one. Only ShareCamera images are surfaced
+ * (not room/profile/invention thumbnails). Each
  * row is joined to its creator's username and (if any) its room's name. Returns the
  * projected SlideshowImage shape. Usernames/room names are resolved in two batched
  * lookups to avoid an N+1 across the (at most `limit`) images.
@@ -532,7 +572,7 @@ export async function getSlideshowImages(
 	const { results } = await db
 		.prepare(
 			`SELECT data FROM image
-			 WHERE json_extract(data, '$.Accessibility') IN (0, 1)
+			 WHERE json_extract(data, '$.Accessibility') = 1
 			   AND json_extract(data, '$.Type') = ?1
 			 ORDER BY id DESC LIMIT ?2`
 		)

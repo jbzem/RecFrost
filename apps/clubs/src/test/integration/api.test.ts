@@ -369,6 +369,64 @@ describe('clubs endpoints', () => {
 		expect(await res.json()).toEqual([])
 	})
 
+	test('GET /account/:id/clubs lists only the PUBLIC clubs the account is a member of', async () => {
+		const club = (ClubId: number, Visibility: number, ClubType = 0) => ({
+			ClubId,
+			Name: `Club ${ClubId}`,
+			Description: '',
+			Category: 'Social',
+			Visibility,
+			Joinability: 0,
+			AllowJuniors: true,
+			MainImageName: '',
+			ClubType,
+			ClubhouseRoomId: null,
+			CreatorAccountId: 4500,
+			IsRRO: false,
+			MinLevel: 0,
+			State: 0,
+			MemberCount: 2,
+			CreatedAt: `2026-07-0${ClubId - 9100}T00:00:00Z`,
+		})
+		// 9101 public, 9102 private, 9103 public but only a pending request, 9104 a
+		// public subscription club, 9105 public.
+		const clubs = [club(9101, 1), club(9102, 0), club(9103, 1), club(9104, 1, 1), club(9105, 1)]
+		const insertClub = env.DB.prepare('INSERT INTO club (data) VALUES (?1)')
+		const insertMember = env.DB.prepare(
+			'INSERT INTO club_member (club_id, account_id, membership_type, created_at) VALUES (?1, 4501, ?2, ?3)'
+		)
+		await env.DB.batch([
+			...clubs.map((c) => insertClub.bind(JSON.stringify(c))),
+			...clubs.map((c) =>
+				insertMember.bind(c.ClubId, c.ClubId === 9103 ? 1 : 10, '2026-07-10T00:00:00Z')
+			),
+		])
+		const pending = await env.DB.prepare(
+			'SELECT membership_type FROM club_member WHERE club_id = 9103 AND account_id = 4501'
+		).first<{ membership_type: number }>()
+		expect(pending?.membership_type).toBeLessThan(10)
+
+		// No auth needed; the private, pending and subscription clubs are left out.
+		const res = await exports.default.fetch(`${ORIGIN}/account/4501/clubs`)
+		expect(res.status).toBe(200)
+		const listed = (await res.json()) as Array<{ ClubId: number; Visibility: number }>
+		expect(listed.map((c) => c.ClubId)).toEqual([9101, 9105])
+		expect(listed[0]).toMatchObject({ Name: 'Club 9101', Visibility: 1, MemberCount: 2 })
+
+		// The member themself gets the same public-only list here.
+		const own = await exports.default.fetch(`${ORIGIN}/account/4501/clubs`, {
+			headers: await bearer('4501'),
+		})
+		expect(((await own.json()) as Array<{ ClubId: number }>).map((c) => c.ClubId)).toEqual([
+			9101, 9105,
+		])
+
+		// An account with no memberships has no clubs; a non-numeric id doesn't match.
+		const none = await exports.default.fetch(`${ORIGIN}/account/4599/clubs`)
+		expect(await none.json()).toEqual([])
+		expect((await exports.default.fetch(`${ORIGIN}/account/abc/clubs`)).status).toBe(404)
+	})
+
 	test('the my-clubs lists exclude subscription clubs (ClubType 1)', async () => {
 		// A subscription club the player both created and is a member of. It's reached
 		// through /subscription/*, so it must not show up among their clubs.
@@ -1646,6 +1704,7 @@ describe('clubs endpoints', () => {
 			'DELETE /club/{clubId}',
 			'DELETE /club/{clubId}/additionalimage/{index}',
 			'DELETE /club/{clubId}/clubhouse',
+			'GET /account/{accountId}/clubs',
 			'GET /announcements/club/{clubId}',
 			'GET /announcements/v2/mine/unread',
 			'GET /announcements/v2/subscription/mine/unread',

@@ -993,8 +993,18 @@ export async function publishInvention(
 }
 
 /**
+ * The most tokens an invention may sell for, inclusive. Enforced on every price a player
+ * can send — `v3/publish`, `v4/publish` and `v1/updateprice` — by refusing the write; the
+ * client has no ceiling of its own. The same number as the custom-shirt cap
+ * (`MAX_PLAYER_ITEM_PRICE`), kept separate because they are separate policies that happen
+ * to agree. migrations/0033_invention_price_cap.sql lowered the rows already over it.
+ */
+export const MAX_INVENTION_PRICE = 1000
+
+/**
  * Set an invention's price (`v1/updateprice`). Returns the updated invention, or
- * null when there's no such row; the caller rejects negative prices.
+ * null when there's no such row; the caller rejects negative prices and ones over
+ * {@link MAX_INVENTION_PRICE}.
  */
 export async function setInventionPrice(
 	db: D1Database,

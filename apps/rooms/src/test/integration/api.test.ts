@@ -134,25 +134,6 @@ beforeAll(async () => {
 	await env.DB.prepare('INSERT OR IGNORE INTO account (data) VALUES (?1)')
 		.bind(JSON.stringify({ accountId: 999, username: 'Dormer' }))
 		.run()
-
-	// Relationship table (owned by the api worker) — `visitedby/:playerId` reads it to
-	// check the caller is a friend of the player whose history they're asking for.
-	await env.DB.prepare(
-		`CREATE TABLE IF NOT EXISTS relationship (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			requester_id INTEGER NOT NULL,
-			target_id INTEGER NOT NULL,
-			relationship_type INTEGER NOT NULL DEFAULT 0
-		)`
-	).run()
-	const insertRel = env.DB.prepare(
-		'INSERT INTO relationship (requester_id, target_id, relationship_type) VALUES (?1, ?2, ?3)'
-	)
-	await env.DB.batch([
-		insertRel.bind(791, 790, 3), // friends — the caller (791) is the requester
-		insertRel.bind(790, 792, 3), // friends — the caller (792) is the target
-		insertRel.bind(793, 790, 1), // request out, not accepted — 793 is NOT a friend
-	])
 })
 
 describe('rooms endpoints', () => {
@@ -796,7 +777,7 @@ describe('rooms endpoints', () => {
 		expect(other).toEqual([])
 	})
 
-	it('GET /rooms/visitedby/:playerId serves a friend’s visited rooms and 403s everyone else', async () => {
+	it('GET /rooms/visitedby/:playerId serves any player’s visited rooms to any authed caller', async () => {
 		// Give 790 a visit history (cheering/favoriting stamps a last-visit).
 		const subject = await bearer('790')
 		await SELF.fetch(`${ORIGIN}/rooms/2/interactionby/me/cheer`, {
@@ -808,11 +789,11 @@ describe('rooms endpoints', () => {
 			headers: subject,
 		})
 
-		// A mutual friend reads it — a bare array, regardless of which side of the
-		// relationship row the caller sits on.
-		for (const friend of ['791', '792']) {
+		// Anyone with a token reads it — a bare array. Friendship is not required: a
+		// player's history is as public as the rooms on their profile.
+		for (const viewer of ['791', '792', '793', '794']) {
 			const res = await SELF.fetch(`${ORIGIN}/rooms/visitedby/790`, {
-				headers: await bearer(friend),
+				headers: await bearer(viewer),
 			})
 			expect(res.status).toBe(200)
 			const body = (await res.json()) as Array<{ RoomId: number }>
@@ -833,14 +814,6 @@ describe('rooms endpoints', () => {
 		).json()) as unknown[]
 		expect(own.length).toBe(2)
 
-		// A pending request is not a friendship, and a stranger is not either → 403.
-		for (const outsider of ['793', '794']) {
-			const res = await SELF.fetch(`${ORIGIN}/rooms/visitedby/790`, {
-				headers: await bearer(outsider),
-			})
-			expect(res.status).toBe(403)
-		}
-
 		// No token at all → 401, never a fallback account.
 		const anon = await SELF.fetch(`${ORIGIN}/rooms/visitedby/790`)
 		expect(anon.status).toBe(401)
@@ -850,6 +823,67 @@ describe('rooms endpoints', () => {
 			await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: subject })
 		).json()) as unknown[]
 		expect(me.length).toBe(2)
+	})
+
+	it('GET /rooms/visitedby/:playerId hides visits to unpublished rooms', async () => {
+		// 790 has been to an UNPUBLISHED room (their own build), an unlisted one, and a room
+		// that opted out of lists — each stamped as the most recent visit, ahead of the two
+		// public rooms the test above recorded.
+		const seed = (data: Record<string, unknown>) =>
+			env.DB.prepare('INSERT INTO room (data) VALUES (?1)').bind(JSON.stringify(data)).run()
+		await seed({
+			RoomId: 30501,
+			Name: 'VisitedUnpublished',
+			CreatorAccountId: 790,
+			Accessibility: 0,
+			SubRooms: [],
+		})
+		await seed({ RoomId: 30502, Name: 'VisitedUnlisted', Accessibility: 2, SubRooms: [] })
+		await seed({
+			RoomId: 30503,
+			Name: 'VisitedOptedOut',
+			Accessibility: 1,
+			ExcludeFromLists: true,
+			SubRooms: [],
+		})
+		await env.DB.prepare(
+			`INSERT INTO interaction (player_id, room_id, last_visited_at)
+			 VALUES (790, 30501, '2030-01-03T00:00:00.000Z'),
+			        (790, 30502, '2030-01-02T00:00:00.000Z'),
+			        (790, 30503, '2030-01-01T00:00:00.000Z')`
+		).run()
+		try {
+			const ids = async (headers: Record<string, string>, query = '') =>
+				(
+					(await (
+						await SELF.fetch(`${ORIGIN}/rooms/visitedby/790${query}`, { headers })
+					).json()) as Array<{ RoomId: number }>
+				).map((r) => r.RoomId)
+
+			// Anyone else sees only the listable rooms of the history — public, not opted
+			// out — and a page is a page of THOSE: the first two are the two public rooms,
+			// not two holes where the hidden ones sat.
+			const sorted = (list: number[]) => [...list].sort((a, b) => a - b)
+			const viewer = await bearer('794')
+			expect(sorted(await ids(viewer))).toEqual([2, 12])
+			expect(sorted(await ids(viewer, '?skip=0&take=2'))).toEqual([2, 12])
+
+			// The player's own history, by id or as `me`, is the whole of it, newest first.
+			const subject = await bearer('790')
+			const own = await ids(subject)
+			expect(own.slice(0, 3)).toEqual([30501, 30502, 30503])
+			expect(sorted(own)).toEqual([2, 12, 30501, 30502, 30503])
+			expect(
+				(
+					(await (
+						await SELF.fetch(`${ORIGIN}/rooms/visitedby/me`, { headers: subject })
+					).json()) as Array<{ RoomId: number }>
+				).map((r) => r.RoomId)
+			).toEqual(own)
+		} finally {
+			await env.DB.prepare('DELETE FROM room WHERE room_id BETWEEN 30501 AND 30503').run()
+			await env.DB.prepare('DELETE FROM interaction WHERE room_id BETWEEN 30501 AND 30503').run()
+		}
 	})
 
 	it('GET /rooms/hot returns a paginated { Results, TotalResults } of public rooms', async () => {
@@ -1334,6 +1368,14 @@ describe('rooms endpoints', () => {
 			`UPDATE room SET data = json_set(data, '$.IsDeveloperOwned', json('true'),
 				'$.CloningAllowed', json('true'), '$.Stats.VisitorCount', 42) WHERE room_id = 24`
 		).run()
+		// And every kind of tag: an owner tag flagged as the genre (Type 0), the server's
+		// `rro` (Type 2), and the two system tags the client derives (Type 1).
+		await env.DB.batch([
+			env.DB.prepare(
+				`INSERT OR REPLACE INTO room_tag (room_id, tag, type, is_primary_genre)
+				 VALUES (24, 'hangout', 0, 1), (24, 'rro', 2, 0), (24, 'beta', 1, 0), (24, 'limitsv2', 1, 0)`
+			),
+		])
 
 		// Clone MakerRoom (base, RoomId 24) → a fresh room owned by the caller (801).
 		const ok = await post(24, 'MyMakerClone')
@@ -1343,9 +1385,12 @@ describe('rooms endpoints', () => {
 		expect(ok.value!.Name).toBe('MyMakerClone')
 		expect(ok.value!.CreatorAccountId).toBe(801)
 		expect(ok.value!.RoomId).toBeGreaterThan(51)
-		// The clone starts fresh with no tags — none of the source's tags (including
-		// the `base` template tag) carry over.
-		expect(ok.value!.Tags).toEqual([])
+		// Only the system tags (Type 1) carry over — the scene needs them to run. The
+		// owner's tags, the `base` template tag, the derived `rro` and the genre flag don't.
+		expect(ok.value!.Tags).toEqual([
+			{ Tag: 'beta', Type: 1 },
+			{ Tag: 'limitsv2', Type: 1 },
+		])
 		// IsRRO is cleared so the client doesn't render a virtual "RRO" tag on the clone.
 		expect(ok.value!.IsRRO).toBe(false)
 		// Nor is it developer-owned, and the new owner opts it into cloning themselves.
@@ -1375,7 +1420,11 @@ describe('rooms endpoints', () => {
 			Stats: Record<string, number>
 		}
 		expect(fetched.Name).toBe('MyMakerClone')
-		expect(fetched.Tags).toEqual([])
+		// The system tags were written to `room_tag`, so they survive a re-read.
+		expect(fetched.Tags).toEqual([
+			{ Tag: 'beta', Type: 1 },
+			{ Tag: 'limitsv2', Type: 1 },
+		])
 		expect(fetched.IsDeveloperOwned).toBe(false)
 		expect(fetched.CloningAllowed).toBe(false)
 		expect(fetched.Stats.VisitorCount).toBe(0)
@@ -2520,6 +2569,60 @@ describe('rooms endpoints', () => {
 		await env.DB.prepare('DELETE FROM room_ban WHERE room_id = ?1 AND banned_player_id = ?2')
 			.bind(112, 1)
 			.run()
+	})
+
+	it('GET/PUT /rooms/:id/playerdata/me stores and serves the caller’s per-room data', async () => {
+		const get = async (path: string, sub?: string) =>
+			SELF.fetch(`${ORIGIN}${path}`, { headers: sub ? await bearer(sub) : {} })
+		const rowsOf = async (roomId: number) =>
+			(
+				await env.DB.prepare(
+					'SELECT player_id, data FROM playerdata WHERE room_id = ?1 ORDER BY player_id'
+				)
+					.bind(roomId)
+					.all()
+			).results
+
+		// The real client body, verbatim: a base64 blob the server stores without decoding.
+		const blob = 'CAVKGhoYChIKEPpVnzZ50iJLpI8BPCdUjjoaAhAAUggKAAoACgAKAA=='
+
+		// No token → 401 on both: the data is the caller's own.
+		expect((await get('/rooms/2/playerdata/me')).status).toBe(401)
+		expect((await putForm('/rooms/2/playerdata/me', { data: blob })).status).toBe(401)
+		// Unknown room → 404 on the write; the read serves an empty blob (a 404 would stall
+		// the room load).
+		expect((await putForm('/rooms/99999/playerdata/me', { data: blob }, '205')).status).toBe(404)
+		expect(await (await get('/rooms/99999/playerdata/me', '205')).json()).toEqual({ Data: '' })
+
+		// Nothing saved yet → empty `Data`.
+		expect(await (await get('/rooms/2/playerdata/me', '205')).json()).toEqual({ Data: '' })
+
+		// Any player may save to any room — 205 owns nothing here. The reply carries what
+		// was stored, and the GET reads it back verbatim.
+		const put = await putForm('/rooms/2/playerdata/me', { data: blob }, '205')
+		expect(put.status).toBe(200)
+		expect(await put.json()).toEqual({ Data: blob })
+		expect(await (await get('/rooms/2/playerdata/me', '205')).json()).toEqual({ Data: blob })
+		expect(await rowsOf(2)).toEqual([{ player_id: 205, data: blob }])
+
+		// A re-save overwrites the one row rather than appending.
+		expect(await (await putForm('/rooms/2/playerdata/me', { data: 'CAA=' }, '205')).json()).toEqual(
+			{ Data: 'CAA=' }
+		)
+		expect(await rowsOf(2)).toEqual([{ player_id: 205, data: 'CAA=' }])
+
+		// Keyed per (room, player): another player and another room are their own rows,
+		// and neither reads the other's.
+		expect((await putForm('/rooms/2/playerdata/me', { data: blob }, '1')).status).toBe(200)
+		expect((await putForm('/rooms/3/playerdata/me', { data: blob }, '205')).status).toBe(200)
+		expect(await rowsOf(2)).toEqual([
+			{ player_id: 1, data: blob },
+			{ player_id: 205, data: 'CAA=' },
+		])
+		expect(await (await get('/rooms/3/playerdata/me', '205')).json()).toEqual({ Data: blob })
+		expect(await (await get('/rooms/3/playerdata/me', '1')).json()).toEqual({ Data: '' })
+
+		await env.DB.prepare('DELETE FROM playerdata WHERE room_id IN (2, 3)').run()
 	})
 
 	it('POST/DELETE /rooms/:id/leaderboards/:lid configures and removes a room’s leaderboard slots', async () => {
@@ -5377,6 +5480,7 @@ describe('rooms endpoints', () => {
 			'PUT /rooms/{roomId}/loadscreen',
 			'PUT /rooms/{roomId}/max_player_calculation_mode',
 			'PUT /rooms/{roomId}/name',
+			'PUT /rooms/{roomId}/playerdata/me',
 			'PUT /rooms/{roomId}/restrictions',
 			'PUT /rooms/{roomId}/roles/{accountId}',
 			'PUT /rooms/{roomId}/roles/{accountId}/invite',

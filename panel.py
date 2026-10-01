@@ -303,7 +303,9 @@ class Panel(tk.Tk):
             messagebox.showwarning('RecFrost panel', 'Enter the export file path first.')
             return
         argv = ['bun',
-                str(ROOT / 'packages' / 'tools' / 'src' / 'bin' / 'runx.cmd.ts'),
+                # Forward slashes: bun silently exits(1) on an absolute Windows
+                # path with backslashes; POSIX form runs everywhere.
+                str(ROOT / 'packages' / 'tools' / 'src' / 'bin' / 'runx.cmd.ts').replace('\\', '/'),
                 'admin', cmd]
         if spec['amount']:
             argv.append(amount)
@@ -429,9 +431,19 @@ class Panel(tk.Tk):
                 code = self.spawn(self._deploy_argv(app), cwd=ROOT)
                 self.emit(f'exit code: {code}')
             else:
-                script = {'migrate': 'migrate', 'test': 'test', 'types': 'check:types',
-                          'build': 'build'}[cmd]
-                code = self.spawn(['bun', 'run', script], cwd=ROOT / 'apps' / app)
+                # pnpm, not bun: the package scripts point at extensionless sh
+                # bins which bun cannot execute on Windows, while pnpm resolves
+                # its own .CMD shims (verified: `pnpm --filter api check:types`).
+                # 'test' runs vitest in CI (non-watch) mode: the package's `test`
+                # script is watch-mode and would stream forever in the log.
+                if cmd == 'test':
+                    argv = ['pnpm', 'exec', 'vitest', 'run', '--silent',
+                            '--testTimeout=15000']
+                else:
+                    script = {'migrate': 'migrate', 'types': 'check:types',
+                              'build': 'build'}[cmd]
+                    argv = ['pnpm', 'run', script]
+                code = self.spawn(argv, cwd=ROOT / 'apps' / app)
                 self.emit(f'exit code: {code}')
         except Exception as exc:  # keep the GUI alive no matter what
             self.emit(f'panel error: {exc}', err=True)
